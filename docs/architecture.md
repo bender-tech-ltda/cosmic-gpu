@@ -100,6 +100,15 @@ These are intentional choices that differ from the original implementation plan 
 
 Named volumes (`backend-data`, `worker[1-3]-data`) persist Hyperbee/Hypercore state and node-identity seeds across container restarts so worker pubkeys stay stable.
 
+## 4.2 Telemetry
+
+The backend exposes a small in-memory metrics surface:
+
+- **`GET /metrics`** — public, opt-out from rate-limiting (so liveness scrapers cannot DoS themselves). Returns a JSON snapshot of inference counters (`success`, `failed`, `cancelled`), token totals (`prompt`, `completion`), latency percentiles (`avg`, `p50`, `p95`, `p99`), worker pool gauges (`connected`, `capacity`), and rate-limit rejection counters.
+- **`GET /v1/usage/me`** — authenticated. Returns the caller's usage totals plus the most recent windows (capped at 24 by default) sourced from `UsageState`. Powers the dashboard poll.
+- **In-memory `MetricsRegistry`** (`apps/backend/src/observability/metrics.ts`) tracks counters, a fixed-size ring buffer of latency samples (default 1000), and lazy worker gauges. The dispatcher records outcome / token / latency observations on every dispatch (streaming + non-streaming); the central error handler increments the rate-limit rejection counter for every 429 envelope.
+- **Counters reset on restart.** Same trade-off as the in-memory rate-limit store. Production hardening (Prometheus exposition, persistent counters, multi-replica aggregation) is captured under §6 Future Improvements.
+
 ## 5. Scaling
 
 The current design is single-region and single-backend-replica. To scale:
@@ -122,6 +131,8 @@ These are deliberate "should-haves" or "could-haves" that are documented but not
 - **Audit feed.** Replace structured Pino `event` lines with a dedicated Hypercore feed so audit history is replicable.
 - **Hyperswarm firewall callback.** Allow-list mode for production deployments where worker pubkeys are known ahead of time.
 - **Heartbeat jitter.** Random ±20% jitter on `worker.health` ticks so all workers don't ping at the same instant.
+- **Prometheus exposition.** Add a `/metrics?format=prom` branch that serialises `MetricsRegistry.snapshot()` in Prometheus text format so existing scrapers can ingest it without parsing JSON.
+- **Persistent metrics + multi-replica aggregation.** Move counters into a Hyperbee-backed sliding window (or Redis) so `/metrics` survives restarts and aggregates across multiple backend replicas.
 - **Pear Runtime migration.** Re-evaluate after the ecosystem stabilises; see `.cursor/rules/pear-runtime.mdc`.
 
 ## 7. Review Checklist
