@@ -10,6 +10,8 @@ export const healthRoute: FastifyPluginAsyncTypebox = async (app) => {
   app.get(
     '/health',
     {
+      // Liveness probes must never be rate-limited.
+      config: { rateLimit: false },
       schema: {
         tags: ['Health'],
         summary: 'Liveness probe',

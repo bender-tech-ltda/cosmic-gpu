@@ -8,12 +8,15 @@ import { randomUUID } from 'node:crypto';
 import Fastify, { type FastifyInstance } from 'fastify';
 
 import { loadConfig, type BackendConfig } from './config/env.config.js';
+import authPlugin from './plugins/auth.plugin.js';
 import corsPlugin from './plugins/cors.plugin.js';
 import errorHandlerPlugin from './plugins/error-handler.plugin.js';
 import helmetPlugin from './plugins/helmet.plugin.js';
+import rateLimitPlugin from './plugins/rate-limit.plugin.js';
 import requestIdPlugin from './plugins/request-id.plugin.js';
 import statePlugin from './plugins/state.plugin.js';
 import swaggerPlugin from './plugins/swagger.plugin.js';
+import { apiKeysRoute } from './routes/api-keys.route.js';
 import { healthRoute } from './routes/health.route.js';
 import { modelsRoute } from './routes/models.route.js';
 
@@ -64,10 +67,13 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await app.register(requestIdPlugin);
   await app.register(errorHandlerPlugin);
   await app.register(statePlugin);
+  await app.register(authPlugin);
+  await app.register(rateLimitPlugin);
 
   // Routes.
   await app.register(healthRoute);
   await app.register(modelsRoute, { prefix: '/v1' });
+  await app.register(apiKeysRoute, { prefix: '/v1' });
 
   return app;
 }

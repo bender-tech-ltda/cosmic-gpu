@@ -20,6 +20,8 @@ export const modelsRoute: FastifyPluginAsyncTypebox = async (app) => {
   app.get(
     '/models',
     {
+      // OpenAI compatibility convention: model listing is not rate-limited.
+      config: { rateLimit: false },
       schema: {
         tags: ['Models'],
         summary: 'List available models',

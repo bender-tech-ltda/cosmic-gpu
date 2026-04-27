@@ -39,6 +39,20 @@ async function errorHandlerPlugin(app: FastifyInstance): Promise<void> {
       return reply.code(400).send(body);
     }
 
+    // `@fastify/rate-limit` signals exhaustion by throwing an error with
+    // `statusCode: 429`. Translate it into the shared envelope so clients
+    // get a consistent shape and our `code` field stays meaningful.
+    if (error.statusCode === 429) {
+      const body: ApiErrorBody = {
+        statusCode: 429,
+        code: ERROR_CODE.rateLimited,
+        message: error.message || 'Rate limit exceeded.',
+        requestId: request.id,
+      };
+      request.log.warn({ err: error }, 'rate limited');
+      return reply.code(429).send(body);
+    }
+
     // Anything else: log full error, expose generic message.
     request.log.error({ err: error }, 'unhandled error');
     const body: ApiErrorBody = {
