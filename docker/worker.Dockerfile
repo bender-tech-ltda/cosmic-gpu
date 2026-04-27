@@ -32,6 +32,6 @@ COPY --from=build /repo /app
 RUN mkdir -p /data && chown -R node:node /data
 VOLUME ["/data"]
 USER node
-CMD ["node", "apps/worker/dist/index.js"]
+CMD ["node", "apps/worker/dist/src/worker.js"]
 
 LABEL org.opencontainers.image.source="https://github.com/cosmic/cosmic-take-home"
