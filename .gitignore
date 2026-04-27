@@ -41,3 +41,9 @@ pnpm-debug.log*
 # Misc
 .cache/
 .turbo/
+
+# Local-only AI assistant artefacts (originals + plans). Track
+# `.cursor/rules/` only — the originals and the plan documents are
+# personal scratch space and should not be part of the repository.
+.cursor/originals/
+.cursor/plans/
