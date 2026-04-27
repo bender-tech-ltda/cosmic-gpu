@@ -1,0 +1,39 @@
+{
+  "name": "@cosmic/backend",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "test": "vitest",
+    "lint": "eslint src --ext .ts",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@cosmic/shared": "workspace:*",
+    "@fastify/cors": "^10.0.0",
+    "@fastify/helmet": "^12.0.0",
+    "@fastify/rate-limit": "^10.0.0",
+    "@fastify/swagger": "^9.0.0",
+    "@fastify/swagger-ui": "^5.0.0",
+    "@fastify/type-provider-typebox": "^5.0.0",
+    "@hyperswarm/rpc": "^4.0.0",
+    "@sinclair/typebox": "^0.33.0",
+    "compact-encoding": "^2.15.0",
+    "envalid": "^8.0.0",
+    "fastify": "^5.0.0",
+    "hyperdb": "^3.0.0",
+    "hyperswarm": "^4.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.7.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0",
+    "vitest-mock-extended": "^2.0.0"
+  }
+}

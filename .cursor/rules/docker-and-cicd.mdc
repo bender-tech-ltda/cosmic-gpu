@@ -1,0 +1,125 @@
+---
+description: Docker Compose layout, container conventions, GitHub Actions CI/CD
+globs:
+  - "docker/**"
+  - ".github/workflows/**"
+  - "Dockerfile*"
+  - "docker-compose*.yml"
+alwaysApply: false
+---
+# Docker and CI/CD
+
+## Container Strategy
+
+- Each app has its own Dockerfile under `docker/`:
+  - `docker/backend.Dockerfile`
+  - `docker/worker.Dockerfile`
+  - `docker/frontend.Dockerfile` (multi-stage: builds with Node, serves with `nginx:alpine`)
+- Use **multi-stage builds**: `deps → build → runtime`. The runtime stage runs as **non-root** (`USER node`) and copies only built artifacts.
+- Pin the Node base image (e.g., `node:22-alpine`).
+
+## Docker Compose
+
+The `docker-compose.yml` at the repo root must spin up:
+- 1 × backend (depends on at least 1 worker; healthcheck on `/health`)
+- ≥ 3 × workers (parametrized via `replicas` or distinct services for clarity)
+- 1 × frontend (optional in compose; can also be run via `pnpm dev`)
+
+Required:
+- All services share `P2P_DISCOVERY_TOPIC` to join the same swarm.
+- Persistent named volumes per worker for Hypercore data (`worker1-data`, `worker2-data`, …) so state survives restarts (per the implementation plan).
+- A user-defined network so service DNS resolution works.
+- `restart: unless-stopped` for resilience.
+
+```yaml path=null start=null
+services:
+  backend:
+    build: { context: ., dockerfile: docker/backend.Dockerfile }
+    env_file: .env
+    environment:
+      P2P_DISCOVERY_TOPIC: ${P2P_DISCOVERY_TOPIC}
+    ports: ["3000:3000"]
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3000/health').then(r=>process.exit(r.ok?0:1))"]
+      interval: 5s
+      retries: 5
+    depends_on: [worker1]
+
+  worker1:
+    build: { context: ., dockerfile: docker/worker.Dockerfile }
+    env_file: .env
+    environment:
+      WORKER_ID: worker1
+      P2P_DISCOVERY_TOPIC: ${P2P_DISCOVERY_TOPIC}
+    volumes:
+      - worker1-data:/data
+
+  # worker2, worker3 …
+
+volumes:
+  worker1-data:
+```
+
+## Local Development Modes
+
+- **Compose mode**: `docker compose up --build`. Best for showing distributed behavior in the demo video.
+- **Native mode**: `pnpm dev` runs backend + frontend on the host; one or more workers can run via `pnpm --filter worker dev` in additional terminals.
+- The README must document both modes.
+
+## GitHub Actions CI
+
+Workflow file: `.github/workflows/ci.yml`.
+
+Jobs:
+1. **install** — sets up Node, pnpm, caches deps.
+2. **lint** — `pnpm lint`.
+3. **typecheck** — `pnpm typecheck`.
+4. **test** — `pnpm test --run` (Vitest). Uploads coverage as an artifact.
+5. **build** — `pnpm build`. Verifies all apps compile.
+6. **docker** (PR-only, optional) — builds backend and worker images to validate Dockerfiles.
+
+Triggers: `push` to `main`, `pull_request` against `main`.
+
+```yaml path=null start=null
+name: ci
+on:
+  push: { branches: [main] }
+  pull_request: { branches: [main] }
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v3
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test --run
+      - run: pnpm build
+```
+
+## Build Artifacts
+
+- `dist/` is **always** produced inside each app's folder by the build step.
+- `dist/` is **gitignored**; the user prefers it to never be tracked.
+- A clean script (`pnpm clean`) wipes all `dist/` and `node_modules/` (optional).
+
+## Image Hygiene
+
+- `.dockerignore` excludes `node_modules`, `dist`, `.git`, `.env`, `*.test.ts`, `**/__tests__/**`.
+- Final images do NOT contain dev dependencies.
+- Image labels include `org.opencontainers.image.source` pointing to the GitHub repo.
+
+## Deployment Notes (For README)
+
+- The architecture supports horizontal worker scaling: add more containers to the same topic.
+- Production deploys must terminate TLS at the edge (the backend speaks HTTP internally).
+- A live demo (e.g., on Fly.io or Render) is **bonus points** per the task. Document the deploy command in the README; do not make it a hard requirement.
+
+## Related
+- `project-structure.mdc`
+- `p2p-architecture.mdc`
+- `testing-standards.mdc`

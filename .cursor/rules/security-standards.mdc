@@ -1,0 +1,84 @@
+---
+description: Security baseline - API keys, rate limiting, secrets, input validation, encryption
+globs:
+  - "**/*.ts"
+  - "**/*.tsx"
+alwaysApply: true
+---
+# Security Standards
+
+## API Keys
+
+- Generated with `crypto.randomBytes(32)` and prefixed `sk-` for OpenAI compatibility (e.g., `sk-<base64url(32 bytes)>`).
+- **Never store the plaintext.** Persist only the SHA-256 hash (or HMAC-SHA-256 with `API_KEY_HMAC_SECRET`). Show the plaintext to the user **once** at creation time.
+- Validation path on every protected request:
+  1. Extract `Authorization: Bearer <key>` header.
+  2. Hash the candidate, look up by hash in HyperDB.
+  3. Reject if missing or revoked.
+- Support **revocation** (soft-delete with a `revokedAt` timestamp; never reuse IDs).
+- Optionally support **scopes** (e.g., `inference:read`, `keys:manage`) — add only if time allows.
+
+## Authentication Header Hygiene
+
+- Reject requests where the `Authorization` header is malformed (`401`).
+- Never log the full token. Log only the key ID (`apiKeyId`) and a short prefix.
+
+## Rate Limiting
+
+- Apply per-API-key rate limiting using `@fastify/rate-limit` (in-memory) or a HyperDB-backed sliding window for the demo.
+- Defaults: `RATE_LIMIT_RPM=60`, configurable per env.
+- On exceed: respond `429 Too Many Requests` with `Retry-After` header.
+- Document the in-memory limitation as a single-instance trade-off; in production, switch to a distributed counter (Redis or HyperDB).
+
+## Input Validation
+
+- All request bodies, query strings, and path params are validated by Fastify schemas (TypeBox / Zod). No exceptions.
+- Reject unknown fields (`additionalProperties: false`).
+- Validate ranges for inference parameters: `temperature ∈ [0, 2]`, `top_p ∈ [0, 1]`, `max_tokens > 0`, `messages` non-empty.
+
+## Secrets & Environment
+
+- All secrets come from environment variables. Never hardcode.
+- `.env.example` lists every variable with safe defaults; real secrets stay out of git.
+- The repository **must** include a `.gitignore` that covers `.env`, `node_modules`, `dist`, and Hypercore data dirs.
+- Pre-commit (optional, time permitting): a secret-scanner hook (e.g., `gitleaks`) — document but don't block.
+
+## Encryption-in-Transit
+
+- Hyperswarm sessions are end-to-end encrypted via Noise. Do not disable.
+- HTTPS is the responsibility of the deploy environment; the README must note that production deploys must terminate TLS.
+- Each node has a 32-byte identity keypair persisted to disk in a path controlled by `NODE_KEYPAIR_PATH`. Do not check the keypair file into git.
+
+## CORS
+
+- The backend allows the configured `FRONTEND_ORIGIN` only (default: `http://localhost:5173`).
+- Wildcard origins are forbidden.
+
+## HTTP Hardening (Quick Wins)
+
+- Use `@fastify/helmet` for sensible default headers.
+- Disable `x-powered-by`.
+- Set a request body size limit (`bodyLimit`) consistent with reasonable inference payloads.
+
+## Logging Sensitive Data
+
+- **Never** log: API keys, request bodies that may contain user prompts, full public keys.
+- **Always** log: `requestId`, `apiKeyId`, error code, route.
+- Public keys are shown truncated (first 8 chars + `…`).
+
+## Dependency Hygiene
+
+- Pin direct dependencies; allow caret on transitives.
+- Run `npm audit --omit=dev` (or `pnpm audit`) in CI; fail on high/critical.
+
+## What This Project Does NOT Implement (and why)
+
+- **No user authentication** (only API-key auth) — out of scope for the 2-day window.
+- **No multi-tenant isolation** beyond per-key scoping.
+- **No external KMS** — secrets are env vars.
+These limitations are listed in `docs/architecture.md` as known gaps.
+
+## Related
+- `api-documentation.mdc`
+- `coding-standards.mdc`
+- `p2p-architecture.mdc`

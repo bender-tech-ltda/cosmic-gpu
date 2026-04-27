@@ -1,0 +1,81 @@
+---
+description: Conventional Commits + workflow rules - never auto-commit, always confirm with user
+alwaysApply: true
+---
+# Git Commit Message Convention
+
+## Workflow Rules (MANDATORY)
+
+- **NEVER commit or push automatically.** Always show the staged files, the diff, and the proposed commit/push commands, and wait for explicit user confirmation before executing.
+- Suggest commit messages, but do not run `git commit` until approved.
+- Each commit should represent **a single logical unit of work** (a feature, a bug fix, a refactor — not a mix).
+- Review the diff for accuracy and clarity before suggesting the commit.
+
+## Subject Line
+
+Format: `type(scope): lowercase description in imperative mood`
+
+- **Types**: `feat`, `fix`, `refactor`, `test`, `chore`, `docs`, `build`, `ci`, `nit`.
+- **Scope** (optional): the area touched — e.g., `backend`, `frontend`, `worker`, `p2p`, `shared`, `docker`, `ci`.
+- Use lowercase after the colon and **imperative mood** (`add`, `fix`, `remove`).
+- No trailing period.
+- Aim for ≤ 72 characters.
+
+### Examples
+
+```text
+feat(backend): add streaming /v1/chat/completions endpoint
+feat(p2p): wire dispatcher to hyperswarm rpc workers
+fix(worker): release rpc stream on client disconnect
+refactor(shared): extract compact-encoding schemas
+test(backend): cover api-key revocation flow
+docs(readme): add docker compose run instructions
+chore(deps): pin hyperswarm to ^4.x
+ci: add typecheck step to github actions
+```
+
+## Body (Recommended for Non-Trivial Changes)
+
+- Leave one blank line between subject and body.
+- Use `-` bullets.
+- Reference concrete files, classes, or methods when useful.
+- Wrap lines around 80 chars.
+
+## Footer (Optional)
+
+- `Refs:` for issue or task references.
+- `BREAKING CHANGE:` for incompatible changes.
+- `Made-with: Warp` if appropriate.
+
+## Commit Granularity
+
+For this 2-day project, target commits at meaningful checkpoints:
+1. Initial scaffold (monorepo + tsconfig + lint).
+2. Shared package skeleton (compact-encoding + DTOs).
+3. Backend HTTP scaffold (Fastify + swagger + health).
+4. API key management (CRUD + auth plugin).
+5. Worker scaffold + hyperswarm RPC wiring.
+6. Backend dispatcher → worker happy path.
+7. Streaming inference (SSE).
+8. Frontend scaffold (Vite + router + base layout).
+9. Frontend: API keys page.
+10. Frontend: dashboard / metrics page.
+11. Tests (services + routes).
+12. Docker compose + worker volumes.
+13. CI workflow.
+14. README + architecture document.
+
+Adjust as the project evolves; do not over-fragment commits.
+
+## Pre-Commit Checklist
+
+Before suggesting a commit, the AI must verify:
+- [ ] No `console.log` or commented-out blocks introduced.
+- [ ] No secrets in the diff (API keys, private keys, `.env`).
+- [ ] All new files match naming conventions.
+- [ ] Tests for the changed area pass locally.
+- [ ] `pnpm lint` and `pnpm typecheck` succeed locally.
+
+## Related
+- `coding-standards.mdc`
+- `testing-standards.mdc`

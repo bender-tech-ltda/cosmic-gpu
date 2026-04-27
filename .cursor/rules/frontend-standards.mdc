@@ -1,0 +1,110 @@
+---
+description: React + Vite frontend standards - structure, state, real-time updates, UX requirements
+globs:
+  - "apps/frontend/**/*.ts"
+  - "apps/frontend/**/*.tsx"
+alwaysApply: false
+---
+# Frontend Standards
+
+## Stack
+
+- **React 18+** with **Vite** (TypeScript template).
+- **TanStack Query** for server state (API calls, caching, invalidation, polling).
+- **Zustand** for UI-only state (modals, toasts, ephemeral form state).
+- **React Router** for navigation.
+- **Tailwind CSS** (or any utility-first lib) for styling. Functionality > visual polish — keep it clean and responsive.
+- **Native EventSource** (`fetch` + `ReadableStream` for `Authorization` header support) for SSE inference streams.
+
+## Project Layout
+
+```
+apps/frontend/src/
+├── pages/          # Route-level views (one folder per route)
+├── components/     # Reusable building blocks
+├── hooks/          # TanStack Query hooks (one per resource) + custom hooks
+├── stores/         # Zustand stores
+├── lib/            # apiClient, sseClient, formatters
+└── main.tsx        # App bootstrap + providers
+```
+
+## State Management
+
+- **Server state** (anything fetched from the backend) lives in TanStack Query. Never copy server state into Zustand.
+- **UI state** (open modals, optimistic flags, draft form values that don't belong in URL) lives in Zustand.
+- **URL is state** for filters, sort, pagination — use `searchParams`.
+
+```ts path=null start=null
+// Resource hook example
+export const useApiKeys = () =>
+  useQuery({
+    queryKey: ['api-keys'],
+    queryFn: () => apiClient.get('/api-keys').then(r => r.data),
+  });
+
+export const useCreateApiKey = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateApiKey) => apiClient.post('/api-keys', input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['api-keys'] }),
+  });
+};
+```
+
+## API Client
+
+- A single `apiClient` (axios or fetch wrapper) handles base URL, auth header, and error normalization.
+- Errors thrown by the client must include `status`, `code`, and a user-safe `message`.
+- Never embed secrets in the client bundle.
+
+## Real-Time Updates
+
+- **Usage metrics & worker status**: poll via TanStack Query `refetchInterval` (e.g., 5s) for the demo. Document WebSocket/SSE upgrade as future work in `docs/architecture.md`.
+- **Inference streaming**: use SSE. Display tokens as they arrive; show a stop button that aborts the stream via `AbortController`.
+
+```ts path=null start=null
+async function* streamCompletion(req, signal) {
+  const res = await fetch('/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ ...req, stream: true }),
+    signal,
+  });
+  if (!res.ok || !res.body) throw new Error('stream failed');
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  // parse `data: {...}\n\n` chunks and yield them
+}
+```
+
+## UX Requirements (MANDATORY)
+
+Every interactive view MUST handle:
+- **Loading state** — skeleton or spinner while data is fetching.
+- **Error state** — a clear, actionable message (not a raw stack trace).
+- **Empty state** — a primary action (e.g., "Create your first API key").
+- **Disabled state** for buttons during pending mutations.
+
+## Components
+
+- Components are **PascalCase** files exporting default-named function components.
+- Co-locate component-only types and styles next to the component.
+- Keep components small (<150 lines). Extract subcomponents as needed.
+- Use semantic HTML (`<button>`, `<nav>`, `<main>`) for accessibility baseline.
+
+## Accessibility (Pragmatic Minimum)
+
+- All form inputs have `<label>`s.
+- All interactive elements are keyboard-reachable.
+- Use `aria-live` for streaming output regions so screen readers announce updates.
+
+## Forbidden Patterns
+
+- ❌ Calling `fetch` directly inside components — go through hooks.
+- ❌ Storing tokens or API keys in `localStorage` long-term without explicit user consent UI.
+- ❌ Suppressing TypeScript errors with `// @ts-ignore`.
+- ❌ Using `any` for API response types — derive types from `@cosmic/shared`.
+
+## Related
+- `coding-standards.mdc`
+- `api-documentation.mdc`
+- `observability.mdc`

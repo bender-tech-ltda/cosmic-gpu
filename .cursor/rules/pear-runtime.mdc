@@ -1,0 +1,83 @@
+---
+description: Pear Runtime / Bare guidance - LIKE-TO-HAVE / future direction, NOT the default
+alwaysApply: false
+---
+# Pear Runtime (Like-to-Have / Future Direction)
+
+> **Status: NOT the current target.** This project ships on **plain Node.js + Holepunch libraries**. This rule documents how a future migration to **Pear Runtime / Bare** could be done — what to follow if/when we choose to adopt it, and what to be careful about. Treat this rule as **inspiration only** until the user explicitly opts in.
+
+## Why It Was Originally Suggested
+
+The implementation plan (`Implementation Plan Distributed GPU Cloud Service.md`) recommended Pear Runtime because it provides:
+- A P2P-native runtime engine (Bare) that is consistent across desktop GPU workers and mobile telemetry nodes.
+- An on-demand daemon and application shell for background peer discovery and lifecycle management.
+- Tight integration with the Holepunch stack (Hypercore, Hyperswarm, HyperDB).
+- "Zero-config" deployment via P2P (apps loaded remotely from peers).
+
+## Why We Diverged for the 2-Day Window
+
+- **Ecosystem maturity**: per the implementation plan itself, Pear modules may undergo "unstable" changes.
+- **Bare ≠ Node.js**: the API surface is smaller. Many third-party Node libs (Fastify plugins, Vitest, etc.) may not work without porting.
+- **Containerization**: Docker workflows are far more battle-tested for Node.js than for Bare.
+- **Time-to-MVP**: a 2-day window punishes ecosystem risk.
+
+These are documented in `docs/architecture.md` under "Trade-offs" and `CLAUDE.md` under Section 7.
+
+## When Migration Becomes Worth Considering
+
+- The team commits to mobile telemetry nodes (where Bare's cross-target story shines).
+- We need true zero-infrastructure deployment (peers fetch the app from peers).
+- We have time (≥ 1 week) to validate that all dependencies (Fastify or replacement, Pino, Hyperswarm, HyperDB) work in Bare.
+
+## Migration Sketch (For When We're Ready)
+
+### Initialization
+```bash path=null start=null
+mkdir gpu-cloud-service
+cd gpu-cloud-service
+pear init --type terminal
+```
+
+### Directory layout (consistent with our current monorepo)
+```
+.
+├── backend/        # Fastify API + worker orchestration
+├── frontend/       # Dashboard
+├── shared/         # MUST house Compact Encoding schemas (already true)
+└── package.json    # with `pear` block (entry, type, dependencies)
+```
+
+### Required adjustments from the current Node.js codebase
+- **Drop Node-only modules** that do not run on Bare (most file system extras, native add-ons, certain crypto helpers). Replace with Bare-compatible alternatives.
+- **Verify Fastify** runs on Bare; if not, replace the HTTP layer with a Bare-compatible framework or a lightweight `bare-server` equivalent.
+- **Use Bare's modular architecture** to keep code shareable between desktop GPU workers and mobile-target telemetry nodes.
+- **Deploy via Pear**: `pear stage` and `pear release` to publish to peers; `pear run pear://<key>` to launch.
+
+### What stays the same
+- The `packages/shared` Compact Encoding schemas — these are runtime-agnostic.
+- HyperDB / Hypercore / Hyperbee usage and the GC strategy.
+- Hyperswarm topic + RPC method shapes.
+- API key / rate limiting / observability semantics.
+
+## Risks and Open Questions
+
+- Does our chosen HTTP framework run on Bare? If not, what is the smallest replacement that preserves OpenAPI generation?
+- Does our test framework (Vitest) work on Bare, or do we need to run tests on Node and ship on Pear?
+- How do we package the React frontend for Pear distribution? (Pear targets terminal/desktop apps; web frontends typically remain hosted separately.)
+- What is the operational story for logging and metrics under Bare?
+
+## Decision Heuristic for the Assistant
+
+If the user asks to migrate to Pear Runtime:
+1. Confirm scope and time available — this is **not** a 2-day exercise.
+2. Identify which libraries break under Bare and propose replacements.
+3. Stage the migration: shared package first, then worker, then backend, then frontend (if applicable).
+4. Maintain `docs/architecture.md` with a migration log.
+
+Until then: **build on Node.js**, keep the abstractions clean (especially in `packages/shared` and the P2P layer) so a future migration is feasible.
+
+## Related
+- `CLAUDE.md` (Section 7 — Trade-offs)
+- `p2p-architecture.mdc`
+- `project-structure.mdc`
+- `scope-and-prioritization.mdc`

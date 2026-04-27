@@ -1,0 +1,87 @@
+---
+description: 2-day budget guardrails - MVP scope, prioritization, scope creep prevention
+alwaysApply: true
+---
+# Scope and Prioritization
+
+The task is **explicit**: *"prioritize working functionality over extensive features. We prefer 2 features done well over 5 features done poorly."* This rule operationalizes that directive.
+
+## MVP (Must-Have) — Two Headline Features
+
+### Feature 1 — API Key Management with Auth & Rate Limiting
+- Create / list / revoke API keys.
+- Plaintext shown only at creation.
+- Stored hashed in HyperDB.
+- Auth plugin validates `Authorization: Bearer <key>` on every protected request.
+- Rate limit per API key with `429` and `Retry-After`.
+
+### Feature 2 — OpenAI-Compatible Streaming Inference, Distributed via P2P
+- `POST /v1/chat/completions` (streaming + non-streaming).
+- `GET /v1/models` listing available worker capabilities.
+- Backend dispatches to a worker via Hyperswarm RPC.
+- Worker runs a **synthetic streamed token generator** (mock LLM).
+- Telemetry recorded for each request (tokens, latency, worker).
+- Failure path: worker disappears mid-flight → re-dispatch (non-stream) or surface error to client (stream).
+
+### Plus the Frontend Dashboard (supports both features)
+- API keys page (create/list/revoke + copy-to-clipboard for plaintext).
+- Inference playground (paste a prompt; observe streamed tokens).
+- Usage dashboard (charts of requests/tokens over time + worker pool size).
+
+## Should-Have (If Time Allows)
+- Prometheus `/metrics` exposition (in addition to JSON).
+- Per-key scopes (`inference:read`, `keys:manage`).
+- Persistence of nodes' identity keypair to disk (instead of regenerated each run).
+
+## Could-Have (Nice to Have, Likely Skipped)
+- Live demo deployment (Fly.io / Render). **Bonus points** per task.
+- Playwright E2E test.
+- Multiple "models" with different mocked behaviors.
+- Backend horizontal scaling demo.
+- Audit log Hypercore feed + UI view (structured logs serve the audit story for the MVP).
+
+## Out of Scope (Explicit Non-Goals)
+- Real LLM weights or model serving.
+- Real Kubernetes orchestration.
+- User accounts, sign-up flows, password resets.
+- Production hardening (KMS, secrets manager, multi-region).
+- Mark & Sweep GC implementation and `/admin/gc` admin endpoint (documented as future work).
+- Pear Runtime / Bare integration. We stick to plain Node.js for the 2-day window. (The implementation plan suggests Pear; we deliberately diverge to ship reliably. Document this in `docs/architecture.md` under "Trade-offs.")
+
+## Time Budget (Indicative)
+
+For a 2-day window (~16 effective hours):
+- Day 1 morning: scaffold + shared package + backend Fastify + API keys.
+- Day 1 afternoon: Hyperswarm + worker scaffold + RPC happy path + non-streaming inference.
+- Day 1 evening: Streaming SSE end-to-end.
+- Day 2 morning: Frontend scaffold + API keys page + playground.
+- Day 2 afternoon: Dashboard / metrics + tests.
+- Day 2 evening: Docker compose + CI + README + architecture doc + video.
+
+Stop adding features when the must-haves are stable and documented.
+
+## Decision Heuristics
+
+When deciding whether to add a feature mid-flight, ask:
+1. Is it required by **one of the two MVP features**? If not, defer.
+2. Does it improve a **deliverable** (README, OpenAPI spec, architecture doc, video)? If yes, prioritize.
+3. Does it demonstrate **distributed-systems thinking** (failure handling, telemetry, encoding)? If yes, consider — but only after MVPs.
+4. Will it take more than 2 hours? If yes, treat as out-of-scope and add to "Future Improvements" in the architecture doc.
+
+## Definition of Done (Per MVP Feature)
+
+A feature is "done" when:
+- The happy path works end-to-end and is shown in the README's quick-start.
+- At least one unit/integration test covers the success path and one error path.
+- It is documented in the OpenAPI spec (where applicable).
+- It is mentioned in `docs/architecture.md` with its trade-offs.
+
+## Communication Discipline
+
+- The architecture document and the demo video must explicitly call out **trade-offs and assumptions**. The task evaluation criteria say this is as important as the implementation.
+- For every shortcut taken, list it under "Future Improvements" so reviewers see deliberate prioritization, not gaps.
+
+## Related
+- `CLAUDE.md` (project root)
+- `git-commit-message-convention.mdc`
+- `testing-standards.mdc`

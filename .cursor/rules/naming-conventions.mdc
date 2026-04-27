@@ -1,0 +1,66 @@
+---
+description: Naming conventions for files, classes, variables, routes, env vars, and P2P artifacts
+globs:
+  - "**/*.ts"
+  - "**/*.tsx"
+alwaysApply: true
+---
+# Naming Conventions
+
+## Files
+
+| Kind | Pattern | Example |
+|---|---|---|
+| Fastify route | `*.route.ts` | `api-keys.route.ts` |
+| Service | `*.service.ts` | `inference.service.ts` |
+| Plugin | `*.plugin.ts` | `auth.plugin.ts` |
+| Compact-encoding schema | `*.schema.ts` | `inference-job.schema.ts` |
+| TypeScript DTO / type | `*.dto.ts` or `*.types.ts` | `api-key.dto.ts` |
+| State accessor (HyperDB/Hyperbee) | `*.state.ts` | `workers.state.ts` |
+| RPC handler (worker) | `*.handler.ts` | `inference.handler.ts` |
+| Config | `*.config.ts` | `env.config.ts` |
+| Constants | `*.constants.ts` | `topics.constants.ts` |
+| Errors | `*.errors.ts` | `api-keys.errors.ts` |
+| Test | `*.test.ts` | `api-keys.service.test.ts` |
+| React component | `PascalCase.tsx` | `UsageChart.tsx` |
+| React hook | `useCamelCase.ts` | `useApiKeys.ts` |
+
+## Folders
+- All folders are **kebab-case** (`api-keys/`, `worker-discovery/`).
+- Plural for collections of similar things (`routes/`, `services/`).
+
+## Symbols
+- **Classes / Components / Types**: `PascalCase` (`ApiKeysService`, `UsageChart`, `InferenceJob`).
+- **Variables / functions**: `camelCase` (`createApiKey`, `dispatchToWorker`).
+- **Constants** (truly immutable, top-level): `UPPER_SNAKE_CASE` (`DISCOVERY_TOPIC`, `MAX_TOKENS_DEFAULT`).
+- **Booleans**: prefix with `is`, `has`, `should`, `can` (`isStreaming`, `hasCapacity`).
+- **Arrays**: plural (`workers`, `pendingJobs`).
+- **Functions**: verb-noun (`fetchWorkers`, `markJobComplete`).
+
+## Routes / HTTP
+
+- **Resources**: kebab-case, plural (`/api-keys`, `/inference/jobs`).
+- **OpenAI compatibility paths** keep their canonical form: `/v1/models`, `/v1/chat/completions`.
+- **Versioning** at the path prefix (`/v1`), applied at the Fastify app level — not per-controller.
+- **Query params**: camelCase (`?sortBy=createdAt`).
+
+## Environment Variables
+
+- `UPPER_SNAKE_CASE`, prefixed with the app or domain.
+- Examples: `BACKEND_PORT`, `BACKEND_LOG_LEVEL`, `WORKER_ID`, `P2P_DISCOVERY_TOPIC`, `RATE_LIMIT_RPM`.
+- Secrets must use a `_SECRET` or `_KEY` suffix (`API_KEY_HMAC_SECRET`).
+
+## P2P / Holepunch Artifacts
+
+- **Topic constants**: `UPPER_SNAKE_CASE` (`GPU_WORKER_DISCOVERY_TOPIC`).
+- **HyperDB key prefixes**: lower-kebab, namespaced (`api-keys/<id>`, `workers/<pubkey>`, `jobs/<id>`).
+- **Hypercore feed names**: `<domain>-feed` (`telemetry-feed`).
+- **Public keys** in logs/UI: always Base64-encoded and truncated to first 8 chars + `…`.
+
+## Tests
+- Same name as the source file with `.test.ts` (e.g., `inference.service.test.ts`).
+- Describe blocks: noun being tested. `it` blocks: imperative ("dispatches job to least-loaded worker").
+
+## Related
+- `coding-standards.mdc`
+- `project-structure.mdc`

@@ -1,0 +1,106 @@
+---
+description: Monorepo structure, package boundaries, shared schema location, file conventions
+globs: []
+alwaysApply: true
+---
+# Project Structure
+
+This project is a **2-day take-home** for a distributed GPU cloud service platform. The structure is intentionally minimal but designed to scale to the patterns described in the role's job description.
+
+## Monorepo Layout
+
+The repository uses **pnpm workspaces**:
+
+```
+.
+├── apps/
+│   ├── backend/        # Fastify API + dispatcher (single Node.js process)
+│   ├── frontend/       # React + Vite dashboard
+│   └── worker/         # Simulated GPU worker node (Hyperswarm peer)
+├── packages/
+│   └── shared/         # Compact-encoding schemas, DTOs, P2P topic constants
+├── docker/             # Dockerfiles + docker-compose.yml for local simulation
+├── docs/
+│   └── architecture.md # 2–3 page architecture document (deliverable)
+├── .github/workflows/  # CI/CD
+├── .cursor/rules/      # AI assistant rules (this folder)
+├── CLAUDE.md           # Single source of truth for the AI assistant
+└── README.md           # Setup, run, and demo instructions (deliverable)
+```
+
+## Shared Package (MANDATORY)
+
+`packages/shared/` is the **only** location for cross-process contracts:
+
+- **Compact Encoding schemas** for all RPC messages between backend and workers (per the implementation plan, this is a strict requirement).
+- **TypeScript DTOs** that mirror those schemas (used by Fastify validation and the frontend).
+- **Topic constants** for Hyperswarm discovery (32-byte keys / Base64 strings).
+- **Error codes / enums** shared between backend and frontend.
+
+**Rules:**
+- DTOs must NOT be defined inside `apps/*` folders.
+- All apps import shared types via `@cosmic/shared` (or whatever workspace name is chosen).
+- Compact-encoding schemas are the source of truth; TS types should be inferred from or aligned with them.
+
+## Per-App Structure
+
+### `apps/backend/`
+```
+src/
+├── routes/         # Fastify route handlers (one file per resource)
+├── services/       # Business logic (api-keys, inference, telemetry)
+├── plugins/        # Fastify plugins (auth, rate-limit, swagger, p2p)
+├── p2p/            # Hyperswarm RPC client + dispatcher
+├── state/          # HyperDB / Hyperbee accessors
+├── config/         # Env loading + validation
+└── server.ts       # Fastify bootstrap
+```
+
+### `apps/worker/`
+```
+src/
+├── handlers/       # RPC method implementations (e.g., handleInference)
+├── runtime/        # Hyperswarm peer + RPC server
+├── simulator/      # Synthetic token-stream generator (mock LLM)
+├── config/
+└── worker.ts
+```
+
+### `apps/frontend/`
+```
+src/
+├── pages/          # Route-level views (ApiKeys, Dashboard, Models)
+├── components/     # Reusable UI components
+├── hooks/          # TanStack Query hooks + custom hooks
+├── stores/         # Zustand stores (UI state only)
+├── lib/            # API client, SSE helpers
+└── main.tsx
+```
+
+## Architecture Flow
+
+```
+Browser → Frontend (React) → Backend Fastify API → Hyperswarm RPC → Worker(s)
+                                       ↓
+                                    HyperDB (distributed state)
+```
+
+## Key Principles
+
+1. **Backend is the dispatcher**, not the executor. Inference work is delegated to workers via Hyperswarm RPC.
+2. **HyperDB replaces the centralized DB** for worker metadata, job state, and usage records.
+3. **`packages/shared` is the only cross-process contract**. No duplicated types.
+4. **Each app owns its config** via env vars; shared defaults live in `packages/shared/config-schema`.
+5. **The frontend never talks to workers directly** — it always goes through the backend.
+
+## File Conventions
+- Routes: `*.route.ts`
+- Services: `*.service.ts`
+- DTOs / schemas: `*.schema.ts` (compact-encoding) and `*.dto.ts` (TypeScript types)
+- Plugins: `*.plugin.ts`
+- Tests: `*.test.ts` colocated next to the source file or under `__tests__/`
+
+## Related
+- `coding-standards.mdc` — TypeScript/Fastify code style
+- `naming-conventions.mdc` — File and symbol naming
+- `p2p-architecture.mdc` — Hyperswarm/HyperDB usage

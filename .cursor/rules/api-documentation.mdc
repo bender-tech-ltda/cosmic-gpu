@@ -1,0 +1,110 @@
+---
+description: OpenAPI/Swagger standards for Fastify; OpenAI-compatible endpoint contract
+globs:
+  - "**/routes/**/*.ts"
+  - "**/*.schema.ts"
+  - "**/*.dto.ts"
+alwaysApply: false
+---
+# API Documentation Standards
+
+## Tooling
+
+- Use `@fastify/swagger` + `@fastify/swagger-ui` to generate the OpenAPI spec.
+- Use `@fastify/type-provider-typebox` (or Zod via `fastify-type-provider-zod`) so a single schema definition produces:
+  1. Runtime validation
+  2. TypeScript types
+  3. OpenAPI documentation
+
+**Pick one** of TypeBox or Zod and stick with it across the codebase.
+
+## Schema-Driven Routes
+
+Every route must declare:
+- `body` (for write methods)
+- `querystring` and/or `params` (where applicable)
+- **`response`** with at minimum the success status mapped to a schema
+
+```ts path=null start=null
+app.post('/v1/chat/completions', {
+  schema: {
+    tags: ['Inference'],
+    summary: 'Create a chat completion (OpenAI-compatible)',
+    body: ChatCompletionRequest,
+    response: {
+      200: ChatCompletionResponse, // non-streaming
+    },
+    security: [{ apiKey: [] }],
+  },
+  handler: async (req, reply) => { /* ... */ },
+});
+```
+
+## Response Documentation Rules
+
+- **Success responses are documented via the `response` map** on the schema. The status code is inferred from the HTTP method or set explicitly via `reply.code(...)`.
+- **Document error responses explicitly**, not via narrative comments. Common ones:
+  - `400` — validation error
+  - `401` — missing/invalid API key
+  - `403` — quota exceeded / permission denied
+  - `404` — resource not found
+  - `429` — rate limit exceeded
+  - `503` — no workers available
+- For streaming endpoints, document the response as `text/event-stream` and reference the SSE event shape in the route description.
+
+## OpenAI Compatibility
+
+The inference endpoints must mimic the OpenAI shape so existing SDKs work:
+
+- `GET /v1/models` — returns `{ object: 'list', data: ModelInfo[] }`.
+- `POST /v1/chat/completions`:
+  - Request: `{ model, messages, stream?, temperature?, max_tokens?, ... }`.
+  - Non-streaming response: full `ChatCompletion` object.
+  - Streaming response: `text/event-stream` with `data: {ChatCompletionChunk}\n\n` and a final `data: [DONE]\n\n`.
+
+Validate inputs strictly (e.g., `temperature ∈ [0, 2]`, `max_tokens > 0`).
+
+## API Key Endpoints
+
+- `POST /api-keys` — create
+- `GET /api-keys` — list (current user's keys; key value redacted after creation)
+- `DELETE /api-keys/:id` — revoke
+- The plaintext key value must be **returned only once** at creation time.
+
+## Health & Telemetry
+
+- `GET /health` — liveness; returns `{ status: 'ok', uptime, p2pConnected }`.
+- `GET /metrics` — JSON or Prometheus exposition; document content type explicitly.
+
+## DTO / Schema Authoring Rules
+
+- All schemas live in `packages/shared/`.
+- Optionality is conveyed by the schema (`Type.Optional(...)` or `z.optional()`), not by extra documentation flags.
+- Provide `description` and `example` on every property; they appear in Swagger UI.
+- Do not duplicate types between schemas and DTOs — derive one from the other.
+
+```ts path=null start=null
+export const CreateApiKeyBody = Type.Object({
+  name: Type.String({ description: 'Human-readable label', example: 'cli-laptop' }),
+  scopes: Type.Optional(Type.Array(Type.String(), {
+    description: 'Allowed scopes; defaults to ["inference:read"]',
+  })),
+});
+export type CreateApiKey = Static<typeof CreateApiKeyBody>;
+```
+
+## Authentication Documentation
+
+- Define a `securityScheme` of type `apiKey` in the Swagger config (header `Authorization: Bearer <key>`).
+- Apply `security: [{ apiKey: [] }]` to every protected route.
+- The `/health` and `/v1/models` endpoints may be left unauthenticated for the demo; call this out in the README.
+
+## Versioning
+
+- All public endpoints live under `/v1`.
+- Future versions add a new prefix; do not break v1 contracts.
+
+## Related
+- `coding-standards.mdc`
+- `security-standards.mdc`
+- `p2p-architecture.mdc`

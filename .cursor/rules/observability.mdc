@@ -1,0 +1,87 @@
+---
+description: Logging, health checks, metrics, and telemetry for the GPU cloud service
+globs:
+  - "**/*.ts"
+alwaysApply: true
+---
+# Observability Standards
+
+## Structured Logging
+
+- Use **Pino** via Fastify's built-in logger.
+- Log lines are JSON; one event per line.
+- Required fields on every log: `level`, `time`, `requestId`, `service` (`backend` | `worker`), `msg`.
+- Add domain fields where relevant: `apiKeyId`, `jobId`, `workerPubKey` (truncated), `tokensIn`, `tokensOut`, `latencyMs`.
+
+```ts path=null start=null
+req.log.info({
+  apiKeyId,
+  workerPubKey: worker.id.slice(0, 8) + '…',
+  tokensIn: messages.tokens,
+}, 'inference.dispatched');
+```
+
+- **Never** log: full API keys, full prompts/messages, full public keys.
+
+### Log Levels
+
+| Level | Use for |
+|---|---|
+| `fatal` | Process is exiting |
+| `error` | Failed request, unrecoverable error |
+| `warn` | Retryable failures, degraded conditions |
+| `info` | Lifecycle events, request completion |
+| `debug` | Verbose internals; gated by `LOG_LEVEL=debug` |
+
+## Health Checks
+
+- `GET /health` (backend) returns:
+  ```json
+  {
+    "status": "ok",
+    "uptimeSeconds": 1234,
+    "p2p": { "connected": true, "peers": 3 },
+    "version": "0.1.0"
+  }
+  ```
+- `GET /ready` (optional) returns `503` until the swarm has at least one worker peer.
+- Workers expose `worker.health()` over RPC and respond with capacity / queue depth.
+
+## Metrics
+
+- Expose `GET /metrics`. Pick **one** of:
+  - **JSON metrics** — small object with counters/gauges (simplest; default for the demo).
+  - **Prometheus exposition** via `prom-client` (preferred if time allows; mentioned in JD).
+- Required series:
+  - `inference_requests_total{outcome=success|error|cancelled}` (counter)
+  - `inference_tokens_total{direction=in|out}` (counter)
+  - `inference_latency_seconds` (histogram)
+  - `worker_pool_size` (gauge)
+  - `rate_limit_rejections_total` (counter)
+- Telemetry counters are also persisted to HyperDB for the dashboard's usage views.
+
+## Request IDs
+
+- Every incoming request must have an `x-request-id` header. If absent, the backend generates one.
+- The ID is propagated to RPC calls (passed in the request payload) so worker logs can be correlated.
+
+## Frontend Telemetry
+
+- The dashboard polls `/metrics` and `/v1/usage/me` and renders charts (e.g., requests over time, average latency, tokens consumed).
+- Surface worker pool size and current peer count prominently so reviewers can see the P2P system "alive".
+
+## Audit Trail
+
+- Significant events (key creation, key revocation, worker join/leave) MUST be emitted as structured Pino log lines with a stable `event` field (e.g., `event: "api-key.created"`). Logs are the audit story for the MVP.
+- A dedicated Hypercore audit feed with a UI view is listed as a future enhancement in `docs/architecture.md`.
+
+## Anti-Patterns
+
+- ❌ `console.log` in app code.
+- ❌ Silent `try/catch`.
+- ❌ Mixing structured fields into the message string (`Failed for key ${id}`) — put them in fields instead.
+
+## Related
+- `coding-standards.mdc`
+- `p2p-architecture.mdc`
+- `security-standards.mdc`

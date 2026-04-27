@@ -1,0 +1,123 @@
+---
+description: Testing standards - Vitest, factories, focus on critical paths for a 2-day budget
+globs:
+  - "**/*.test.ts"
+  - "**/*.test.tsx"
+alwaysApply: true
+---
+# Testing Standards
+
+## Tooling
+
+- **Vitest** as the test runner (works for both backend and frontend).
+- **`supertest`** (or Fastify's `app.inject`) for HTTP-level tests.
+- **`@testing-library/react`** + `jsdom` for component tests.
+- **`vitest-mock-extended`** or `vi.mock` for service mocks.
+
+## Coverage Philosophy (2-Day Scope)
+
+The task requires **basic coverage of critical paths**, not exhaustive coverage. Prioritize tests in this order:
+
+1. **Backend HTTP contract** — auth, validation, success and error shapes for the headline endpoints (`/api-keys`, `/v1/chat/completions`).
+2. **Dispatcher logic** — worker selection, failure handling, retry on disconnect.
+3. **API key lifecycle** — create / list / revoke; verify hashed storage and one-time plaintext return.
+4. **Rate limiting** — 429 after threshold; counter resets per window.
+5. **Frontend smoke tests** — critical pages render with loading / error / empty states.
+6. **P2P happy path (integration)** — backend dispatches a request and receives a streamed response from a mock RPC server. Skip on CI if flakey; run locally.
+
+Skip:
+- Trivial getters/setters
+- Boilerplate React components
+- Library-internal behavior
+
+## Test Anatomy
+
+### Backend Service / Route Test
+
+```ts path=null start=null
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { mockDeep } from 'vitest-mock-extended';
+
+describe('ApiKeysService', () => {
+  const state = mockDeep<ApiKeysState>();
+  let service: ApiKeysService;
+
+  beforeEach(() => {
+    vi.resetAllMocks();
+    service = new ApiKeysService(state);
+  });
+
+  it('hashes the key before storing it', async () => {
+    state.put.mockResolvedValue(undefined);
+    const result = await service.create({ name: 'cli' });
+    expect(result.plaintext).toMatch(/^sk-/);
+    expect(state.put).toHaveBeenCalledWith(
+      expect.stringMatching(/^api-keys\//),
+      expect.objectContaining({ keyHash: expect.any(String) }),
+    );
+  });
+});
+```
+
+### Fastify Route Test (in-process, no network)
+
+```ts path=null start=null
+const app = await buildApp({ env: testEnv });
+const res = await app.inject({
+  method: 'POST',
+  url: '/v1/chat/completions',
+  headers: { authorization: `Bearer ${testKey}` },
+  payload: { model: 'mock-llm', messages: [{ role: 'user', content: 'hi' }] },
+});
+expect(res.statusCode).toBe(200);
+```
+
+## Factories
+
+Use simple factory functions for test data — never inline DTOs in tests.
+
+```ts path=null start=null
+// packages/shared/src/test/factories.ts
+export const apiKeyFactory = (overrides: Partial<ApiKey> = {}): ApiKey => ({
+  id: `ak_${Math.random().toString(36).slice(2, 8)}`,
+  name: 'test',
+  keyHash: 'hash',
+  createdAt: new Date().toISOString(),
+  ...overrides,
+});
+```
+
+## Golden Rules
+
+1. **Reset mocks at the start of `beforeEach`** (`vi.resetAllMocks()`).
+2. **Mock at module boundaries** — service or repo level, not individual functions.
+3. **Use factories** for any test data with more than 2 fields.
+4. **Test both success and failure** for each route.
+5. **One behavior per `it()`** — don't bundle assertions.
+6. **No real network in unit tests** — mock the swarm, mock HTTP.
+7. **Snapshot only stable shapes** (e.g., the `/v1/models` response). Avoid snapshots that change with timestamps.
+
+## Frontend Tests
+
+- Test resource hooks with TanStack Query's test utilities.
+- Test page components with `render` + `userEvent`. Verify the loading → error / success transitions.
+- Mock the `apiClient` rather than `fetch`.
+
+## E2E (Optional, Time Permitting)
+
+If time allows, add a single Playwright spec that:
+1. Creates an API key via the UI.
+2. Submits an inference request and observes streamed tokens.
+
+This is **nice to have, not required**.
+
+## CI Requirements
+
+- All unit tests run in CI on every PR.
+- Coverage thresholds are **soft** for this project; aim for 60%+ on backend services.
+- E2E and P2P integration tests may be marked `@slow` and run only on demand.
+
+## Related
+- `coding-standards.mdc`
+- `frontend-standards.mdc`
+- `docker-and-cicd.mdc`

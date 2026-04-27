@@ -1,0 +1,109 @@
+---
+description: Hyperswarm/Holepunch architecture - discovery, RPC, HyperDB, Compact Encoding, GC
+globs:
+  - "**/p2p/**/*.ts"
+  - "**/state/**/*.ts"
+  - "**/runtime/**/*.ts"
+  - "**/handlers/**/*.ts"
+alwaysApply: true
+---
+# P2P / Holepunch Architecture
+
+The system is decentralized: no central message broker, no central database. The backend acts as a **dispatcher** that joins the same Hyperswarm topic as worker nodes and routes inference work via Hyperswarm RPC.
+
+> Networking background: P2P discovery via the HyperDHT supersedes traditional IP/CIDR planning — peers are identified by 32-byte public keys, not IPs. NAT traversal is automatic.
+
+## Discovery (Hyperswarm)
+
+- Every node joins a **shared 32-byte topic** (the discovery key for the GPU swarm). The topic is configured via `P2P_DISCOVERY_TOPIC` env var (Base64). It must be the same for backend and all workers.
+- Nodes announce themselves with `client: true, server: true` so the backend can both accept and initiate connections.
+- Aim for a **complete-graph** connectivity model in the simulation (≤ ~10 peers): each node connects to every other node.
+- For larger fleets, the backend may keep a single connection per worker; document this trade-off.
+
+```ts path=null start=null
+import Hyperswarm from 'hyperswarm';
+import { GPU_DISCOVERY_TOPIC } from '@cosmic/shared';
+
+const swarm = new Hyperswarm();
+swarm.join(GPU_DISCOVERY_TOPIC, { client: true, server: true });
+```
+
+## RPC
+
+- Use **Hyperswarm RPC** (`@hyperswarm/rpc`) for all backend↔worker request/response and streaming.
+- One RPC method per worker capability:
+  - `inference.run(request)` — non-streaming completion
+  - `inference.stream(request)` — streaming completion (yields chunks)
+  - `worker.health()` — heartbeat / capacity report
+- All RPC payloads are encoded with **Compact Encoding**.
+
+## Compact Encoding (MANDATORY)
+
+- All message types crossing process boundaries via Hyperswarm RPC must have a Compact Encoding schema in `packages/shared/`.
+- Define encoders/decoders explicitly; do not use ad-hoc JSON over RPC.
+- Document the schema's stability: append fields, never reorder or remove.
+
+```ts path=null start=null
+// packages/shared/src/p2p/inference-job.schema.ts
+import c from 'compact-encoding';
+
+export const inferenceRequest = {
+  preencode(state, m) { /* ... */ },
+  encode(state, m)    { /* ... */ },
+  decode(state)       { /* ... */ },
+};
+```
+
+## Distributed State (HyperDB / Hyperbee / Hypercore)
+
+- Use **HyperDB** (or Hyperbee on Hypercore if HyperDB is too unstable) as the source of truth for:
+  - Worker registry (`workers/<pubkey>` → metadata, last-seen, capacity)
+  - API keys (`api-keys/<id>` → hashed key, scopes, owner, quotas)
+  - Job log (`jobs/<id>` → state transitions, worker, tokens, timestamps)
+  - Usage records (`usage/<apiKeyId>/<windowStart>` → counters)
+- Reads should prefer the local replica; **sparse replication** is enabled so each node only syncs what it needs.
+
+### Append-Only Logs
+- Hypercore is append-only. **Never** treat it as mutable. Updates are new entries; the latest version wins.
+- Use signed Merkle trees (default in Hypercore v10+) for integrity. Do not disable signature verification.
+
+### Mark & Sweep GC (Future Improvement)
+- Hypercore is append-only, so disk usage grows monotonically. In production, a Mark & Sweep cycle (`core.startMarking()` → mark active blocks → `core.sweep()`) reclaims space.
+- **Not implemented in the 2-day MVP.** A demo-sized run will not approach disk thresholds. Documented in `docs/architecture.md` under "Future Improvements".
+
+### Fork ID Consistency
+- If a feed is truncated (e.g., `core.truncate(n)`), the **Fork ID** increments. All consumers must observe the new fork; HyperDB views must be reconciled.
+- Critical-path tests must verify that a truncate followed by replication does not corrupt downstream state.
+
+## Encryption & Identity
+
+- Each node has a **32-byte public/private key pair** (generated at first boot, persisted to disk).
+- Hyperswarm sessions are end-to-end encrypted (Noise) — do not roll your own crypto.
+- Sign and verify high-impact RPC messages (e.g., job results) with the worker's identity key. The job log records the signing key so audit is possible.
+- Public keys logged or shown in the UI must be **truncated** (first 8 chars + `…`).
+
+## Workload Distribution
+
+- The backend's dispatcher selects a worker based on a simple policy (least in-flight jobs, then random tiebreak). Document the chosen policy in `docs/architecture.md`.
+- A worker that fails to ack within a timeout is **soft-removed** from the pool (`workers/<pubkey>.lastSeen` stale) and the job is **re-dispatched** to another worker.
+- Job state in HyperDB transitions: `pending → dispatched → running → complete | failed`.
+
+## Failure Scenarios to Handle
+
+| Scenario | Required behavior |
+|---|---|
+| All workers offline | API returns `503 NoWorkersAvailable`; job is queued and retried for a configurable window. |
+| Worker disappears mid-stream | Surface the disconnect to the client (terminate SSE with an error event); attempt re-dispatch only for non-streamed requests. |
+| Topic mismatch | Backend logs warning at startup if no peers are discovered within N seconds. |
+| HyperDB conflict | Last-write-wins with monotonic timestamps; document the trade-off. |
+
+## Local Simulation
+
+- For development, use Docker Compose to spin up 1 backend + N workers in the same Hyperswarm topic. Persist Hypercore data to named volumes so state survives container restarts.
+- The same worker binary runs natively (`pnpm --filter @cosmic/worker dev`) or in a container with no code changes — only the env vars differ.
+
+## Related
+- `project-structure.mdc`
+- `security-standards.mdc`
+- `observability.mdc`
+- `docker-and-cicd.mdc`

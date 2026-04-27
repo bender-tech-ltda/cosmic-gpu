@@ -1,0 +1,114 @@
+---
+description: TypeScript and Fastify coding standards for the GPU cloud service
+globs:
+  - "**/*.ts"
+  - "**/*.tsx"
+alwaysApply: true
+---
+# Coding Standards
+
+## TypeScript
+
+- **Strict mode** enabled in `tsconfig.json` (`strict`, `noImplicitAny`, `noUncheckedIndexedAccess`).
+- **Never use `any`**. Use `unknown` and narrow, or use `Partial<T>` / generics. Cast through Zod/JSON-schema validators when shape is uncertain.
+- Public functions and exported APIs must have **explicit return types**.
+- Prefer `type` aliases for unions/intersections, `interface` for object contracts that may be extended.
+- Always use `import type` for type-only imports to keep runtime bundles lean.
+
+## Fastify Patterns
+
+### Routes
+Use schema-driven routes — Fastify will infer types and validate input.
+
+```ts path=null start=null
+import type { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
+import { CreateApiKeyBody, ApiKeyResponse } from '@cosmic/shared/dto';
+
+export const apiKeysRoutes: FastifyPluginAsyncTypebox = async (app) => {
+  app.post('/api-keys', {
+    schema: {
+      body: CreateApiKeyBody,
+      response: { 201: ApiKeyResponse },
+      tags: ['ApiKeys'],
+      summary: 'Create an API key',
+    },
+    handler: async (req, reply) => {
+      const created = await app.services.apiKeys.create(req.body);
+      return reply.code(201).send(created);
+    },
+  });
+};
+```
+
+### Plugins
+Cross-cutting concerns are Fastify plugins (auth, rate-limit, swagger, p2p, telemetry). Plugins encapsulate `app.decorate(...)` and run via `fastify-plugin` for shared scope.
+
+### Services
+Business logic lives in services (`*.service.ts`), accessed through `app.services.*`. Services should be plain TypeScript classes or factories — no framework decorators.
+
+```ts path=null start=null
+export class ApiKeysService {
+  constructor(private readonly state: ApiKeysState) {}
+
+  async create(input: CreateApiKey): Promise<ApiKey> {
+    // Business logic only; persistence happens in `state`.
+  }
+}
+```
+
+### Async & Resource Management
+- All I/O is `async`. Never block the event loop.
+- For streaming inference: use **async iterators** + Fastify `reply.raw` for SSE. Never buffer streams.
+- Always `try { ... } finally { ... }` or `using`/`AsyncDisposable` for resources (sockets, RPC streams, file handles).
+- Wrap long-running operations in `AbortSignal` paths so client disconnects propagate cancellation.
+
+## Error Handling
+
+- Use **custom error classes** (extending `Error`) for domain errors, with a `statusCode` and `code` property.
+- A single Fastify error handler maps domain errors to HTTP responses + structured logs.
+
+```ts path=null start=null
+export class ApiKeyNotFoundError extends Error {
+  readonly statusCode = 404;
+  readonly code = 'API_KEY_NOT_FOUND';
+}
+```
+
+- **Never** silently swallow errors. Log with structured context (`requestId`, `apiKeyId`, `workerId`) and re-throw or transform.
+- Validation failures must return `400` with field-level error details (Fastify schema error mapping).
+
+## Configuration
+
+- All configuration comes from **environment variables**. Never hardcode hosts, ports, secrets, or feature flags.
+- Use a typed config loader (e.g., `envalid` or a custom Zod loader). Fail fast at boot if required vars are missing.
+- Provide `.env.example` listing every variable; never commit real `.env`.
+
+## Comments and Documentation
+- Prefer **self-documenting code** (good names > comments).
+- Use **JSDoc** for non-trivial public functions: explain *why*, not *what*.
+- Reserve inline comments for complex logic (P2P handshakes, sparse-replication semantics, sweep timing).
+- Do not leave commit-message-style comments (`// fix: foo`) in code.
+
+## Module Boundaries
+
+- Each app (`backend`, `worker`, `frontend`) imports only from `@cosmic/shared` and its own `src/`.
+- The backend never imports worker internals; they communicate via RPC over Hyperswarm.
+- The frontend never imports backend code; it talks via HTTP/SSE.
+
+## Logging
+
+- Use Fastify's `app.log` (Pino under the hood) — never `console.log` outside of bootstrap scripts.
+- Logs must include `requestId` (from `x-request-id` header or generated), and where applicable `apiKeyId`, `jobId`, `workerPubKey` (truncated).
+
+## Anti-Patterns to Avoid
+
+- ❌ Using `any` to silence type errors.
+- ❌ Catching errors only to `console.log` and continue.
+- ❌ Synchronous file I/O in request handlers.
+- ❌ Mutating shared module-level state from inside handlers.
+- ❌ Mixing route logic with persistence — go through services.
+
+## Related
+- `naming-conventions.mdc`
+- `api-documentation.mdc`
+- `testing-standards.mdc`
