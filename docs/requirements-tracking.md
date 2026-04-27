@@ -18,75 +18,75 @@ This file tracks the **40 requirements** extracted from the task brief and the j
 
 ## Functional Requirements (FR)
 
-| ID    | Requirement                                |  S1 |  S2 |  S3 | S4a |  S4b |   CP |   S5 |   S6 | S6.5 | Notes                                                                    |
-| ----- | ------------------------------------------ | --: | --: | --: | --: | ---: | ---: | ---: | ---: | ---: | ------------------------------------------------------------------------ |
-| FR-01 | Backend manages API keys (CRUD)            |  0% | 10% | 10% | 25% | 100% | 100% | 100% | 100% | 100% | Audit events emitted on create + revoke                                  |
-| FR-02 | Backend handles inference requests         |  0% | 10% | 10% | 10% |  10% |  10% |  40% |  85% |  85% | Backend dispatches via least-in-flight + 1 retry; lifecycle in JobsState |
-| FR-03 | Backend simulates workload distribution    |  0% |  0% |  0% | 10% |  10% |  10% |  35% |  75% |  75% | Worker registry + dispatcher selection; usage counters per request       |
-| FR-04 | P2P / distributed task queue               |  0% |  5% |  5% | 15% |  15% |  20% |  40% |  80% |  85% | End-to-end pending→dispatched→running→complete│failed lifecycle          |
-| FR-05 | Frontend — API key management UI           |  0% |  5% |  5% |  5% |  10% |  10% |  10% |  10% |  10% | Backend endpoints ready to consume                                       |
-| FR-06 | Frontend — usage monitoring UI             |  0% |  5% |  5% |  5% |   5% |   5% |   5% |   5% |   5% | Usage DTO defined                                                        |
-| FR-07 | Frontend — basic model deployment workflow |  0% |  5% |  5% |  5% |   5% |   5% |   5% |   5% |   5% | Model DTO defined                                                        |
-| FR-08 | OpenAI-compatible streaming endpoint       |  0% | 15% | 15% | 15% |  15% |  20% |  35% |  35% |  35% | `streamInference` handler unit-tested end-to-end; Protomux wiring Step 7 |
-| FR-09 | OpenAI-compatible non-streaming endpoint   |  0% | 15% | 15% | 15% |  20% |  20% |  40% |  90% |  90% | `POST /v1/chat/completions` live; OpenAI-shaped response                 |
-| FR-10 | Usage tracking                             |  0% |  5% |  5% | 25% |  25% |  25% |  25% |  55% |  55% | Per-key counter increments on every successful chat completion           |
-| FR-11 | Rate limiting                              |  0% |  5% |  5% |  5% | 100% |  90% |  90% |  90% |  90% | Behaviour at 100%; trade-off documented in `docs/architecture.md`        |
-| FR-12 | Metrics dashboard                          |  0% |  0% |  0% |  0% |   0% |   0% |   0% |   0% |   0% | Step 8                                                                   |
-| FR-13 | Health check endpoint                      |  0% | 10% | 75% | 75% |  80% |  80% |  85% |  95% |  95% | Live peer count from `app.p2p.registry.size()`                           |
+| ID    | Requirement                                |  S1 |  S2 |  S3 | S4a |  S4b |   CP |   S5 |   S6 | S6.5 |   S7 | Notes                                                             |
+| ----- | ------------------------------------------ | --: | --: | --: | --: | ---: | ---: | ---: | ---: | ---: | ---: | ----------------------------------------------------------------- |
+| FR-01 | Backend manages API keys (CRUD)            |  0% | 10% | 10% | 25% | 100% | 100% | 100% | 100% | 100% | 100% | Audit events emitted on create + revoke                           |
+| FR-02 | Backend handles inference requests         |  0% | 10% | 10% | 10% |  10% |  10% |  40% |  85% |  85% |  90% | Streaming + non-streaming inference both live                     |
+| FR-03 | Backend simulates workload distribution    |  0% |  0% |  0% | 10% |  10% |  10% |  35% |  75% |  75% |  80% | Streaming dispatch lifecycle covered end-to-end                   |
+| FR-04 | P2P / distributed task queue               |  0% |  5% |  5% | 15% |  15% |  20% |  40% |  80% |  85% |  90% | Protomux channel for streaming on top of Hyperswarm secret stream |
+| FR-05 | Frontend — API key management UI           |  0% |  5% |  5% |  5% |  10% |  10% |  10% |  10% |  10% |  10% | Backend endpoints ready to consume                                |
+| FR-06 | Frontend — usage monitoring UI             |  0% |  5% |  5% |  5% |   5% |   5% |   5% |   5% |   5% |   5% | Usage DTO defined                                                 |
+| FR-07 | Frontend — basic model deployment workflow |  0% |  5% |  5% |  5% |   5% |   5% |   5% |   5% |   5% |   5% | Model DTO defined                                                 |
+| FR-08 | OpenAI-compatible streaming endpoint       |  0% | 15% | 15% | 15% |  15% |  20% |  35% |  35% |  35% |  95% | SSE branch live; client-disconnect cancels worker-side            |
+| FR-09 | OpenAI-compatible non-streaming endpoint   |  0% | 15% | 15% | 15% |  20% |  20% |  40% |  90% |  90% |  90% | Unchanged                                                         |
+| FR-10 | Usage tracking                             |  0% |  5% |  5% | 25% |  25% |  25% |  25% |  55% |  55% |  60% | Streaming path also increments usage on final envelope            |
+| FR-11 | Rate limiting                              |  0% |  5% |  5% |  5% | 100% |  90% |  90% |  90% |  90% |  90% | Unchanged                                                         |
+| FR-12 | Metrics dashboard                          |  0% |  0% |  0% |  0% |   0% |   0% |   0% |   0% |   0% |   0% | Step 8                                                            |
+| FR-13 | Health check endpoint                      |  0% | 10% | 75% | 75% |  80% |  80% |  85% |  95% |  95% |  95% | Unchanged                                                         |
 
 ## Tech Stack Adherence (TS)
 
-| ID    | Requirement                    |  S1 |  S2 |  S3 | S4a | S4b |  CP |  S5 |  S6 | S6.5 | Notes                                                                 |
-| ----- | ------------------------------ | --: | --: | --: | --: | --: | --: | --: | --: | ---: | --------------------------------------------------------------------- |
-| TS-01 | Node.js + Fastify backend      | 25% | 40% | 65% | 65% | 80% | 85% | 85% | 90% |  90% | `chat-completions` route + `p2p` plugin complete the backend slice    |
-| TS-02 | Hyperswarm RPC / Hyperswarm    | 25% | 40% | 40% | 40% | 40% | 50% | 75% | 90% |  92% | Backend dispatches via `@hyperswarm/rpc`; local DHT profile available |
-| TS-03 | HyperDB (or similar K/V store) | 25% | 35% | 35% | 65% | 70% | 75% | 75% | 80% |  80% | JobsState lifecycle + WorkersState now exercised end-to-end           |
+| ID    | Requirement                    |  S1 |  S2 |  S3 | S4a | S4b |  CP |  S5 |  S6 | S6.5 |  S7 | Notes                                                                 |
+| ----- | ------------------------------ | --: | --: | --: | --: | --: | --: | --: | --: | ---: | --: | --------------------------------------------------------------------- |
+| TS-01 | Node.js + Fastify backend      | 25% | 40% | 65% | 65% | 80% | 85% | 85% | 90% |  90% | 92% | SSE route w/ reply.hijack + AbortController for client cancel         |
+| TS-02 | Hyperswarm RPC / Hyperswarm    | 25% | 40% | 40% | 40% | 40% | 50% | 75% | 90% |  92% | 95% | Protomux substream now wired both sides; full Hyperswarm surface used |
+| TS-03 | HyperDB (or similar K/V store) | 25% | 35% | 35% | 65% | 70% | 75% | 75% | 80% |  80% | 80% | Unchanged                                                             |
 
 ## Non-Functional / Best Practices (NFR)
 
-| ID     | Requirement                     |  S1 |  S2 |  S3 | S4a | S4b |  CP |  S5 |  S6 | S6.5 | Notes                                                                 |
-| ------ | ------------------------------- | --: | --: | --: | --: | --: | --: | --: | --: | ---: | --------------------------------------------------------------------- |
-| NFR-01 | Clean modular architecture      | 50% | 60% | 70% | 80% | 85% | 88% | 90% | 92% |  92% | Backend gains a dedicated `p2p/` module with isolated dispatcher unit |
-| NFR-02 | Proper error handling           |  0% | 15% | 50% | 50% | 70% | 70% | 75% | 85% |  85% | Dispatcher emits `noWorkersAvailable` / `workerTimeout` envelopes     |
-| NFR-03 | Input validation                |  0% | 25% | 40% | 40% | 60% | 60% | 70% | 80% |  80% | `ChatCompletionRequest` validated via TypeBox; `stream:true` rejected |
-| NFR-04 | Env-var configuration           | 50% | 50% | 75% | 80% | 80% | 90% | 95% | 95% |  95% | Unchanged                                                             |
-| NFR-05 | Async patterns / resource mgmt  |  0% |  0% | 30% | 40% | 45% | 45% | 70% | 80% |  80% | Dispatcher in-flight discipline + JobsState transitions on every path |
-| NFR-06 | Frontend responsive             |  0% |  0% |  0% |  0% |  0% |  0% |  0% |  0% |   0% | —                                                                     |
-| NFR-07 | Frontend state management       |  0% |  0% |  0% |  0% |  0% |  0% |  0% |  0% |   0% | —                                                                     |
-| NFR-08 | Frontend real-time updates      |  0% |  0% |  0% |  0% |  0% |  0% |  0% |  0% |   0% | —                                                                     |
-| NFR-09 | Frontend loading / error states |  0% |  0% |  0% |  0% |  0% |  0% |  0% |  0% |   0% | —                                                                     |
-| NFR-10 | Local distributed simulation    |  0% |  0% |  0% |  0% |  0% | 50% | 65% | 75% |  90% | Compose has a `p2p-local` profile + DHT bootstrap container           |
-| NFR-11 | Documented scaling approach     |  0% |  0% |  0% |  0% |  5% | 60% | 60% | 65% |  70% | Architecture doc §4.1 covers the local Compose split                  |
-| NFR-12 | Failure scenarios + resilience  |  0% |  5% |  5% | 15% | 25% | 35% | 50% | 70% |  70% | One-attempt re-dispatch + 503 envelopes covered by tests              |
-| NFR-13 | TypeScript / type safety        | 75% | 90% | 90% | 95% | 95% | 95% | 95% | 95% |  95% | Unchanged                                                             |
-| NFR-14 | Logging / observability         |  0% |  0% | 40% | 45% | 50% | 70% | 80% | 85% |  85% | `inference.dispatched` / `completed` / `failed` audit events emitted  |
+| ID     | Requirement                     |  S1 |  S2 |  S3 | S4a | S4b |  CP |  S5 |  S6 | S6.5 |  S7 | Notes                                                                |
+| ------ | ------------------------------- | --: | --: | --: | --: | --: | --: | --: | --: | ---: | --: | -------------------------------------------------------------------- |
+| NFR-01 | Clean modular architecture      | 50% | 60% | 70% | 80% | 85% | 88% | 90% | 92% |  92% | 93% | StreamTransport interface keeps SSE route unit-testable              |
+| NFR-02 | Proper error handling           |  0% | 15% | 50% | 50% | 70% | 70% | 75% | 85% |  85% | 88% | Streaming path emits SSE error event before `[DONE]` terminator      |
+| NFR-03 | Input validation                |  0% | 25% | 40% | 40% | 60% | 60% | 70% | 80% |  80% | 80% | Unchanged                                                            |
+| NFR-04 | Env-var configuration           | 50% | 50% | 75% | 80% | 80% | 90% | 95% | 95% |  95% | 95% | Unchanged                                                            |
+| NFR-05 | Async patterns / resource mgmt  |  0% |  0% | 30% | 40% | 45% | 45% | 70% | 80% |  80% | 90% | Backpressure-aware SSE writes; AbortController bridges client+worker |
+| NFR-06 | Frontend responsive             |  0% |  0% |  0% |  0% |  0% |  0% |  0% |  0% |   0% |  0% | —                                                                    |
+| NFR-07 | Frontend state management       |  0% |  0% |  0% |  0% |  0% |  0% |  0% |  0% |   0% |  0% | —                                                                    |
+| NFR-08 | Frontend real-time updates      |  0% |  0% |  0% |  0% |  0% |  0% |  0% |  0% |   0% |  0% | —                                                                    |
+| NFR-09 | Frontend loading / error states |  0% |  0% |  0% |  0% |  0% |  0% |  0% |  0% |   0% |  0% | —                                                                    |
+| NFR-10 | Local distributed simulation    |  0% |  0% |  0% |  0% |  0% | 50% | 65% | 75% |  90% | 90% | Compose has a `p2p-local` profile + DHT bootstrap container          |
+| NFR-11 | Documented scaling approach     |  0% |  0% |  0% |  0% |  5% | 60% | 60% | 65% |  70% | 70% | Architecture doc §4.1 covers the local Compose split                 |
+| NFR-12 | Failure scenarios + resilience  |  0% |  5% |  5% | 15% | 25% | 35% | 50% | 70% |  70% | 80% | Client-disconnect mid-stream cancellation path tested + documented   |
+| NFR-13 | TypeScript / type safety        | 75% | 90% | 90% | 95% | 95% | 95% | 95% | 95% |  95% | 95% | Unchanged                                                            |
+| NFR-14 | Logging / observability         |  0% |  0% | 40% | 45% | 50% | 70% | 80% | 85% |  85% | 87% | `inference.failed { streaming: true }` audit on stream cancel        |
 
 ## Deliverables (DEL)
 
-| ID     | Requirement                                |   S1 |   S2 |   S3 |  S4a |  S4b |   CP |   S5 |   S6 | S6.5 | Notes                                                           |
-| ------ | ------------------------------------------ | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --------------------------------------------------------------- |
-| DEL-01 | GitHub repo + README + setup               |  50% |  50% |  50% |  50% |  50% |  50% |  50% |  50% |  65% | Smoke run + p2p-local profile documented                        |
-| DEL-02 | Live demo URL (bonus)                      |   0% |   0% |   0% |   0% |   0% |   0% |   0% |   0% |   0% | —                                                               |
-| DEL-03 | OpenAPI spec                               |   0% |  15% |  50% |  50% |  65% |  65% |  65% |  78% |  78% | `/v1/chat/completions` documented; Bearer security on inference |
-| DEL-04 | Architecture document                      |   0% |   0% |   0% |   0% |   0% |  75% |  78% |  82% |  85% | New §4.1 documents the Compose `p2p-local` profile              |
-| DEL-05 | Demo video (≤5 min)                        |   0% |   0% |   0% |   0% |   0% |   0% |   0% |   0% |   0% | —                                                               |
-| DEL-06 | Folder structure (backend/frontend/shared) | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | ✅ Done                                                         |
-| DEL-07 | Docker Compose setup                       |   0% |   0% |   0% |   0% |   0% |  60% |  70% |  80% |  95% | `p2p-local` profile + DHT bootstrap container                   |
-| DEL-08 | `.env.example`                             | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | ✅ Done                                                         |
-| DEL-09 | Basic test coverage                        |  25% |  35% |  45% |  55% |  70% |  80% |  85% |  90% |  90% | 131 tests across shared + backend + worker (+17 in S6)          |
-| DEL-10 | CI/CD pipeline                             |   0% |   0% |   0% |   0% |   0% |  75% |  75% |  75% |  90% | New `docker:build` matrix job validates both images             |
+| ID     | Requirement                                |   S1 |   S2 |   S3 |  S4a |  S4b |   CP |   S5 |   S6 | S6.5 |   S7 | Notes                                                   |
+| ------ | ------------------------------------------ | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ------------------------------------------------------- |
+| DEL-01 | GitHub repo + README + setup               |  50% |  50% |  50% |  50% |  50% |  50% |  50% |  50% |  65% |  65% | Streaming endpoint table updated                        |
+| DEL-02 | Live demo URL (bonus)                      |   0% |   0% |   0% |   0% |   0% |   0% |   0% |   0% |   0% |   0% | —                                                       |
+| DEL-03 | OpenAPI spec                               |   0% |  15% |  50% |  50% |  65% |  65% |  65% |  78% |  78% |  82% | Streaming branch documented in route schema description |
+| DEL-04 | Architecture document                      |   0% |   0% |   0% |   0% |   0% |  75% |  78% |  82% |  85% |  88% | Failure-scenarios row for client-disconnect mid-stream  |
+| DEL-05 | Demo video (≤5 min)                        |   0% |   0% |   0% |   0% |   0% |   0% |   0% |   0% |   0% |   0% | —                                                       |
+| DEL-06 | Folder structure (backend/frontend/shared) | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | ✅ Done                                                 |
+| DEL-07 | Docker Compose setup                       |   0% |   0% |   0% |   0% |   0% |  60% |  70% |  80% |  95% |  95% | Unchanged                                               |
+| DEL-08 | `.env.example`                             | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | ✅ Done                                                 |
+| DEL-09 | Basic test coverage                        |  25% |  35% |  45% |  55% |  70% |  80% |  85% |  90% |  90% |  92% | 136 tests across shared + backend + worker (+5 in S7)   |
+| DEL-10 | CI/CD pipeline                             |   0% |   0% |   0% |   0% |   0% |  75% |  75% |  75% |  90% |  90% | Unchanged                                               |
 
 ---
 
 ## Aggregate Progress
 
-| Bucket                              |       S1 |       S2 |       S3 |      S4a |      S4b |       CP |       S5 |       S6 |     S6.5 |
-| ----------------------------------- | -------: | -------: | -------: | -------: | -------: | -------: | -------: | -------: | -------: |
-| Functional Requirements (FR, 13)    |       0% |      ~8% |     ~13% |     ~16% |     ~30% |     ~31% |     ~38% |     ~50% |     ~51% |
-| Tech Stack (TS, 3)                  |      25% |     ~38% |     ~47% |     ~57% |     ~63% |     ~70% |     ~78% |     ~87% |     ~89% |
-| Non-Functional (NFR, 14)            |     ~14% |     ~18% |     ~30% |     ~36% |     ~42% |     ~48% |     ~54% |     ~59% |     ~60% |
-| Deliverables (DEL, 10)              |   ~32.5% |     ~35% |   ~39.5% |   ~40.5% |     ~45% |     ~61% |     ~62% |     ~67% |     ~73% |
-| **Overall (40 items, simple mean)** | **~13%** | **~18%** | **~25%** | **~30%** | **~40%** | **~46%** | **~52%** | **~60%** | **~62%** |
+| Bucket                              |       S1 |       S2 |       S3 |      S4a |      S4b |       CP |       S5 |       S6 |     S6.5 |       S7 |
+| ----------------------------------- | -------: | -------: | -------: | -------: | -------: | -------: | -------: | -------: | -------: | -------: |
+| Functional Requirements (FR, 13)    |       0% |      ~8% |     ~13% |     ~16% |     ~30% |     ~31% |     ~38% |     ~50% |     ~51% |     ~57% |
+| Tech Stack (TS, 3)                  |      25% |     ~38% |     ~47% |     ~57% |     ~63% |     ~70% |     ~78% |     ~87% |     ~89% |     ~91% |
+| Non-Functional (NFR, 14)            |     ~14% |     ~18% |     ~30% |     ~36% |     ~42% |     ~48% |     ~54% |     ~59% |     ~60% |     ~64% |
+| Deliverables (DEL, 10)              |   ~32.5% |     ~35% |   ~39.5% |   ~40.5% |     ~45% |     ~61% |     ~62% |     ~67% |     ~73% |     ~74% |
+| **Overall (40 items, simple mean)** | **~13%** | **~18%** | **~25%** | **~30%** | **~40%** | **~46%** | **~52%** | **~60%** | **~62%** | **~67%** |
 
 > **CP = Pre-Step-5 Correction Pass.** Combined the Cursor + Warp + verdict suggestions into one pass.
 > **S6 = Backend dispatcher + non-streaming inference.** Backend joins Hyperswarm, registry polls `worker.health`, dispatcher selects via least-in-flight + 1 retry, `POST /v1/chat/completions` is live.
@@ -214,6 +214,17 @@ Merged correction pass driven by [`.cursor/plans/llm-verdict-evaluation.md`](../
 - **README**: new "Smoke run" subsection under "Quick Start (Docker Compose)" with the `curl` recipe (create key → dispatch chat completion).
 - **Architecture doc**: new §4.1 explaining the two ways to bring up the swarm (public DHT vs `p2p-local`).
 
-### Step 7 — Streaming SSE inference (next)
+### Step 7 — Streaming SSE inference
+
+- **Backend StreamTransport** (`apps/backend/src/p2p/stream-transport.ts`): small interface (`openStream(workerPubKey, request, signal)`) the dispatcher consumes; production impl opens a fresh `dht.connect(workerPubKey)` per stream and attaches Protomux to the encrypted Hyperswarm secret stream (per `docs/architecture.md` §2.3).
+- **Worker stream-channel server** (`apps/worker/src/runtime/stream-channel.ts`): for each `swarm.on('connection')`, attaches `Protomux.from(stream)` and registers the `cosmic/inference-stream/v1` channel. Decodes the wire `InferenceRequest`, derives an `AbortSignal` from the channel's close event, drives the existing `streamInference` async generator, and emits Compact-Encoded frames back. Wired into `worker.ts` and torn down on SIGINT/SIGTERM.
+- **Dispatcher**: new `dispatchStream(request, apiKeyId, signal)` async generator. Single-attempt selection (no re-dispatch on the streaming path — the architecture doc commits to surfacing mid-stream worker failure to the client). Lifecycle: pending→dispatched→running→complete│failed in `JobsState`. Audit events: `inference.dispatched / completed / failed` with `streaming: true`.
+- **Route**: `POST /v1/chat/completions` now branches on `body.stream === true`. SSE headers + `reply.hijack()` + backpressure-aware writes via `once('drain')`. Each chunk → `ChatCompletionChunk` (delta + role); `final` envelope → last chunk with `finish_reason`; stream terminates with `data: [DONE]\n\n`. Errors mid-stream emit a `data: { error: ApiErrorBody }\n\n` then `[DONE]`. Client disconnect → `AbortController.abort()` → dispatcher aborts the generator → worker observes channel close → generator ends with `finishReason: 'cancelled'`.
+- **Ambient declarations**: `apps/{backend,worker}/src/types/protomux.d.ts` cover the static `Protomux.from`, `createChannel`, `addMessage`, and message `send` surfaces we touch.
+- **Architecture + README**: `docs/architecture.md` failure-scenarios table gets a "client-disconnect mid-stream" row; `apps/backend/README.md` flips the `stream: true` row from 🚧 Step 7 to ✅ live.
+- **Tests**: 4 new dispatcher streaming tests + 2 new SSE route tests. Total now **136 / 136** (was 131; the obsolete `stream:true → 400` rejection test was removed since the route now serves SSE).
+- **Out of scope**: SSE heartbeats (`: keep-alive\n\n`) every 20 s; documented as Future Improvement. Live Protomux integration is exercised in the Step 6.5 Compose smoke run; unit tests use an injected `StreamTransport` stub.
+
+### Step 8 — Telemetry + `/metrics` + `/v1/usage/me` (next)
 
 _Pending._
