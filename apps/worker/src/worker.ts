@@ -9,6 +9,7 @@ import { runInference } from './handlers/inference.handler.js';
 import { WORKER_AUDIT_EVENT, buildLogger, logEvent } from './observability/logger.js';
 import { loadOrGenerateIdentity } from './runtime/identity.js';
 import { startRpcServer } from './runtime/rpc-server.js';
+import { attachStreamChannelServer } from './runtime/stream-channel.js';
 import { joinSwarm } from './runtime/swarm.js';
 
 async function main(): Promise<void> {
@@ -43,6 +44,13 @@ async function main(): Promise<void> {
     },
   };
 
+  const inferenceDeps = {
+    workerPubKey: identity.publicKeyHex,
+    defaultMaxTokens: config.MOCK_LLM_MAX_TOKENS,
+    defaultTokenRateHz: config.MOCK_LLM_TOKEN_RATE_HZ,
+    inFlightCounter,
+  };
+
   const rpcHandle = await startRpcServer({
     identity,
     log,
@@ -55,16 +63,23 @@ async function main(): Promise<void> {
       startedAt,
       modelId: config.WORKER_MODEL_ID,
     },
-    inference: {
-      workerPubKey: identity.publicKeyHex,
-      defaultMaxTokens: config.MOCK_LLM_MAX_TOKENS,
-      defaultTokenRateHz: config.MOCK_LLM_TOKEN_RATE_HZ,
-      inFlightCounter,
-    },
+    inference: inferenceDeps,
   });
 
+  // Streaming inference travels over a Protomux channel attached to each
+  // Hyperswarm connection (per `docs/architecture.md` §2.3).
+  const streamServer = attachStreamChannelServer({
+    swarm: swarmHandle.swarm,
+    log,
+    inference: inferenceDeps,
+  });
+  streamServer.start();
+
   log.info(
-    { rpcPubKey: identity.publicKeyShort, methods: ['inference.run', 'worker.health'] },
+    {
+      rpcPubKey: identity.publicKeyShort,
+      methods: ['inference.run', 'worker.health', 'inference.stream'],
+    },
     'rpc.ready',
   );
 
@@ -75,6 +90,7 @@ async function main(): Promise<void> {
     log.info({ signal }, 'worker.shutdown.start');
     void (async () => {
       try {
+        streamServer.stop();
         await rpcHandle.close();
         await swarmHandle.close();
         logEvent(log, WORKER_AUDIT_EVENT.workerLeft, {
