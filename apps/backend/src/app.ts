@@ -41,15 +41,37 @@ export interface BuildAppOptions {
 export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyInstance> {
   const config = options.config ?? loadConfig();
 
+  // Pino redaction paths: never let secrets, prompts, or one-time plaintext
+  // tokens land in the structured logs. Pino accepts wildcard `[*]` segments
+  // and the censor string is always emitted in place of the value.
+  const redactPaths: string[] = [
+    'req.headers.authorization',
+    'res.headers.authorization',
+    'request.headers.authorization',
+    'headers.authorization',
+    'authorization',
+    'plaintext',
+    'apiKey.plaintext',
+    'req.body.messages[*].content',
+    'request.body.messages[*].content',
+    'body.messages[*].content',
+  ];
+
+  const baseLoggerOpts =
+    config.NODE_ENV === 'development'
+      ? {
+          level: config.BACKEND_LOG_LEVEL,
+          transport: { target: 'pino-pretty', options: { translateTime: 'SYS:standard' } },
+          redact: { paths: redactPaths, censor: '[REDACTED]' },
+        }
+      : {
+          level: config.BACKEND_LOG_LEVEL,
+          redact: { paths: redactPaths, censor: '[REDACTED]' },
+        };
+
   const app = Fastify({
-    logger:
-      options.logger ??
-      (config.NODE_ENV === 'development'
-        ? {
-            level: config.BACKEND_LOG_LEVEL,
-            transport: { target: 'pino-pretty', options: { translateTime: 'SYS:standard' } },
-          }
-        : { level: config.BACKEND_LOG_LEVEL }),
+    logger: options.logger ?? baseLoggerOpts,
+    bodyLimit: config.BACKEND_BODY_LIMIT_BYTES,
     genReqId: (req) => {
       const fromHeader = req.headers[REQUEST_ID_HEADER];
       if (typeof fromHeader === 'string' && fromHeader.length > 0) return fromHeader;

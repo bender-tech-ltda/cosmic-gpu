@@ -14,7 +14,13 @@ import {
   safeHashEqual,
 } from '../auth/api-key.crypto.js';
 import { DomainError } from '../errors/domain-error.js';
+import { AUDIT_EVENT, logEvent, type AuditLogger } from '../observability/audit.js';
 import type { ApiKeyRecord, ApiKeysState } from '../state/api-keys.state.js';
+
+/** Default no-op logger so unit tests don't need to construct a Pino instance. */
+const NOOP_LOGGER: AuditLogger = {
+  info: (() => {}) as AuditLogger['info'],
+};
 
 export interface CreateApiKeyInput {
   name: string;
@@ -50,6 +56,7 @@ export class ApiKeysService {
   constructor(
     private readonly state: ApiKeysState,
     private readonly hmacSecret: string,
+    private readonly log: AuditLogger = NOOP_LOGGER,
   ) {}
 
   async create(input: CreateApiKeyInput): Promise<CreateApiKeyResult> {
@@ -64,6 +71,12 @@ export class ApiKeysService {
       revokedAt: null,
     };
     await this.state.create(record);
+    logEvent(this.log, AUDIT_EVENT.apiKeyCreated, {
+      apiKeyId: record.id,
+      name: record.name,
+      prefix: record.prefix,
+      scopes: record.scopes,
+    });
     return { record, plaintext };
   }
 
@@ -91,7 +104,13 @@ export class ApiKeysService {
       });
     }
     const updated = await this.state.revoke(id);
-    return updated ?? existing;
+    const result = updated ?? existing;
+    logEvent(this.log, AUDIT_EVENT.apiKeyRevoked, {
+      apiKeyId: result.id,
+      revokedAt: result.revokedAt,
+      alreadyRevoked: existing.revokedAt !== null,
+    });
+    return result;
   }
 
   /**

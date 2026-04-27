@@ -38,7 +38,7 @@ declare module 'fastify' {
 }
 
 async function authPlugin(app: FastifyInstance): Promise<void> {
-  const service = new ApiKeysService(app.state.apiKeys, app.config.API_KEY_HMAC_SECRET);
+  const service = new ApiKeysService(app.state.apiKeys, app.config.API_KEY_HMAC_SECRET, app.log);
   app.decorate('apiKeys', service);
 
   const authenticate: preHandlerAsyncHookHandler = async (
