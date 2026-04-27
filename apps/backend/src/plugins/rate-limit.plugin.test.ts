@@ -28,6 +28,7 @@ describe('rate-limit plugin', () => {
   });
 
   it('returns 429 with shared envelope after exceeding the limit', async () => {
+    const before = app.metrics.snapshot().rateLimit.rejections;
     for (let i = 0; i < 2; i++) {
       const ok = await app.inject({
         method: 'GET',
@@ -47,6 +48,9 @@ describe('rate-limit plugin', () => {
       statusCode: 429,
       code: ERROR_CODE.rateLimited,
     });
+    // The central error handler increments the metrics counter so the
+    // `/metrics` snapshot tracks rate-limit rejections without a separate hook.
+    expect(app.metrics.snapshot().rateLimit.rejections).toBeGreaterThan(before);
   });
 
   it('isolates limits per bearer token', async () => {

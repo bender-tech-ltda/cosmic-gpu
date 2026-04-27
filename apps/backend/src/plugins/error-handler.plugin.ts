@@ -49,6 +49,9 @@ async function errorHandlerPlugin(app: FastifyInstance): Promise<void> {
         message: error.message || 'Rate limit exceeded.',
         requestId: request.id,
       };
+      if (typeof app.metrics?.recordRateLimitRejection === 'function') {
+        app.metrics.recordRateLimitRejection();
+      }
       request.log.warn({ err: error }, 'rate limited');
       return reply.code(429).send(body);
     }

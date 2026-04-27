@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { DomainError } from '../errors/domain-error.js';
 import type { AuditLogger } from '../observability/audit.js';
+import { MetricsRegistry } from '../observability/metrics.js';
 import { JobsState } from '../state/jobs.state.js';
 import { InMemoryKvStore } from '../state/in-memory.adapter.js';
 import { WorkersState, type WorkerRecord } from '../state/workers.state.js';
@@ -418,5 +419,109 @@ describe('InferenceDispatcher.dispatchStream', () => {
       /* drain */
     }
     expect(lastSignal.value).toBe(ctrl.signal);
+  });
+});
+
+describe('InferenceDispatcher metrics', () => {
+  it('records success outcome plus token + latency observations on a happy dispatch', async () => {
+    const { workers, jobs } = await bootstrap();
+    await workers.upsert(workerRecord(PUB_HEX_A, 0));
+    const { client } = makeRpcStub(async (call) => ({
+      kind: 'final',
+      jobId: call.request.jobId,
+      finishReason: 'stop',
+      promptTokens: 7,
+      completionTokens: 11,
+      workerPubKey: call.pubKey,
+      text: 'hi',
+    }));
+    const { log } = fakeLogger();
+    const metrics = new MetricsRegistry();
+    let tick = 1_000;
+    const dispatcher = new InferenceDispatcher({
+      rpcClient: client,
+      workersState: workers,
+      jobsState: jobs,
+      log,
+      metrics,
+      now: () => {
+        tick += 25;
+        return tick;
+      },
+    });
+
+    await dispatcher.dispatch(fixtureRequest(), 'ak_test');
+
+    const snap = metrics.snapshot();
+    expect(snap.inference.requests.success).toBe(1);
+    expect(snap.inference.tokens).toEqual({ prompt: 7, completion: 11 });
+    expect(snap.inference.latencyMs.count).toBe(1);
+    expect(snap.inference.latencyMs.avg).toBeGreaterThan(0);
+  });
+
+  it('records a failed outcome after both retries are exhausted', async () => {
+    const { workers, jobs } = await bootstrap();
+    await workers.upsert(workerRecord(PUB_HEX_A, 0));
+    await workers.upsert(workerRecord(PUB_HEX_B, 0));
+    const { client } = makeRpcStub(async () => {
+      throw new Error('boom');
+    });
+    const { log } = fakeLogger();
+    const metrics = new MetricsRegistry();
+    const dispatcher = new InferenceDispatcher({
+      rpcClient: client,
+      workersState: workers,
+      jobsState: jobs,
+      log,
+      metrics,
+      random: () => 0,
+    });
+
+    await expect(dispatcher.dispatch(fixtureRequest(), 'ak_test')).rejects.toMatchObject({
+      code: ERROR_CODE.workerTimeout,
+    });
+
+    const snap = metrics.snapshot();
+    expect(snap.inference.requests.failed).toBe(1);
+    expect(snap.inference.requests.success).toBe(0);
+    expect(snap.inference.latencyMs.count).toBe(1);
+  });
+
+  it('records a cancelled outcome when the streaming dispatcher aborts', async () => {
+    const { workers, jobs } = await bootstrap();
+    await workers.upsert(workerRecord(PUB_HEX_A, 0));
+    const ctrl = new AbortController();
+    const { transport } = makeStreamTransport(async function* (_pub, _req) {
+      ctrl.abort();
+      // Yield once before throwing to satisfy `require-yield` while still
+      // surfacing the abort: the dispatcher will observe the abort signal
+      // before consuming the second iteration.
+      yield { kind: 'chunk', jobId: _req.jobId, delta: 'partial' };
+      throw new Error('aborted');
+    });
+    const { log } = fakeLogger();
+    const metrics = new MetricsRegistry();
+    const dispatcher = new InferenceDispatcher({
+      rpcClient: makeRpcStub(async () => ({}) as never).client,
+      streamTransport: transport,
+      workersState: workers,
+      jobsState: jobs,
+      log,
+      metrics,
+    });
+
+    let captured: unknown;
+    try {
+      for await (const _ of dispatcher.dispatchStream(fixtureRequest(), 'ak_test', ctrl.signal)) {
+        // never yields
+      }
+    } catch (err) {
+      captured = err;
+    }
+    expect(captured).toBeDefined();
+
+    const snap = metrics.snapshot();
+    expect(snap.inference.requests.cancelled).toBe(1);
+    expect(snap.inference.requests.failed).toBe(0);
   });
 });

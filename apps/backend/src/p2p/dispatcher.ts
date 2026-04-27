@@ -23,6 +23,7 @@ import { randomBytes } from 'node:crypto';
 
 import { DomainError } from '../errors/domain-error.js';
 import { AUDIT_EVENT, logEvent, type AuditLogger } from '../observability/audit.js';
+import type { MetricsRegistry } from '../observability/metrics.js';
 import type { JobsState, JobRecord } from '../state/jobs.state.js';
 import type { WorkerRecord, WorkersState } from '../state/workers.state.js';
 import type { RpcClient } from './rpc-client.js';
@@ -38,6 +39,12 @@ export interface DispatcherDeps {
   workersState: WorkersState;
   jobsState: JobsState;
   log: AuditLogger;
+  /**
+   * Optional metrics registry. When provided, the dispatcher records
+   * outcome / token / latency observations for `GET /metrics`. Tests can
+   * omit it without losing any other behaviour.
+   */
+  metrics?: MetricsRegistry;
   /** Injectable RNG for deterministic tiebreak in tests. */
   random?: () => number;
   /** Injectable clock for timestamps in tests. */
@@ -58,6 +65,7 @@ export class InferenceDispatcher {
   async dispatch(request: ChatCompletionRequest, apiKeyId: string): Promise<ChatCompletion> {
     const jobId = generateJobId();
     const createdAtIso = new Date(this.now()).toISOString();
+    const startedAtMs = this.now();
     await this.deps.jobsState.create({
       id: jobId,
       apiKeyId,
@@ -127,6 +135,12 @@ export class InferenceDispatcher {
           finishReason: finalEnvelope.finishReason,
           completionTokens: finalEnvelope.completionTokens,
         });
+        if (this.deps.metrics) {
+          this.deps.metrics.recordRequest('success');
+          this.deps.metrics.recordTokens('prompt', finalEnvelope.promptTokens);
+          this.deps.metrics.recordTokens('completion', finalEnvelope.completionTokens);
+          this.deps.metrics.recordLatencyMs(this.now() - startedAtMs);
+        }
         return mapToChatCompletion(finalEnvelope, request, jobId, this.now());
       } catch (err) {
         lastError = err;
@@ -143,6 +157,10 @@ export class InferenceDispatcher {
     }
 
     await this.markFailed(jobId);
+    if (this.deps.metrics) {
+      this.deps.metrics.recordRequest('failed');
+      this.deps.metrics.recordLatencyMs(this.now() - startedAtMs);
+    }
     throw new DomainError({
       statusCode: 503,
       code: ERROR_CODE.workerTimeout,
@@ -178,6 +196,7 @@ export class InferenceDispatcher {
 
     const jobId = generateJobId();
     const createdAtIso = new Date(this.now()).toISOString();
+    const startedAtMs = this.now();
     await this.deps.jobsState.create({
       id: jobId,
       apiKeyId,
@@ -192,6 +211,7 @@ export class InferenceDispatcher {
     const worker = await this.selectWorker(new Set());
     if (!worker) {
       await this.markFailed(jobId);
+      if (this.deps.metrics) this.deps.metrics.recordRequest('failed');
       throw new DomainError({
         statusCode: 503,
         code: ERROR_CODE.noWorkersAvailable,
@@ -202,6 +222,7 @@ export class InferenceDispatcher {
     this.incrementPending(worker.pubKey);
     let final: InferenceResponseFinal | null = null;
     let crashed: unknown;
+    let cancelled = false;
     try {
       await this.deps.jobsState.transition(jobId, {
         status: 'dispatched',
@@ -230,6 +251,7 @@ export class InferenceDispatcher {
       }
     } catch (err) {
       crashed = err;
+      cancelled = signal?.aborted === true;
     } finally {
       this.decrementPending(worker.pubKey);
     }
@@ -241,8 +263,13 @@ export class InferenceDispatcher {
         apiKeyId,
         workerPubKey: worker.pubKey,
         streaming: true,
+        cancelled,
         err: crashed instanceof Error ? crashed.message : String(crashed),
       });
+      if (this.deps.metrics) {
+        this.deps.metrics.recordRequest(cancelled ? 'cancelled' : 'failed');
+        this.deps.metrics.recordLatencyMs(this.now() - startedAtMs);
+      }
       if (crashed instanceof DomainError) throw crashed;
       throw new DomainError({
         statusCode: 503,
@@ -265,6 +292,12 @@ export class InferenceDispatcher {
       completionTokens: final!.completionTokens,
       streaming: true,
     });
+    if (this.deps.metrics) {
+      this.deps.metrics.recordRequest('success');
+      this.deps.metrics.recordTokens('prompt', final!.promptTokens);
+      this.deps.metrics.recordTokens('completion', final!.completionTokens);
+      this.deps.metrics.recordLatencyMs(this.now() - startedAtMs);
+    }
   }
 
   /** Test seam — exposes the local pending map size for assertions. */

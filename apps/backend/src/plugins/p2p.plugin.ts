@@ -17,6 +17,7 @@ async function p2pPlugin(app: FastifyInstance): Promise<void> {
     config: app.config,
     state: app.state,
     log: app.log,
+    metrics: app.metrics,
   });
   app.decorate('p2p', p2p);
 
@@ -25,4 +26,7 @@ async function p2pPlugin(app: FastifyInstance): Promise<void> {
   });
 }
 
-export default fp(p2pPlugin, { name: 'p2p', dependencies: ['state', 'auth'] });
+export default fp(p2pPlugin, {
+  name: 'p2p',
+  dependencies: ['state', 'auth', 'metrics'],
+});

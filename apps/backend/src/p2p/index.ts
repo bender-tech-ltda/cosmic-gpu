@@ -6,6 +6,7 @@
 import type { FastifyBaseLogger } from 'fastify';
 
 import type { BackendConfig } from '../config/env.config.js';
+import type { MetricsRegistry } from '../observability/metrics.js';
 import type { CosmicState } from '../state/index.js';
 import { InferenceDispatcher } from './dispatcher.js';
 import { createRpcClient, type RpcClient } from './rpc-client.js';
@@ -26,6 +27,8 @@ export interface BootstrapP2pOptions {
   config: BackendConfig;
   state: CosmicState;
   log: FastifyBaseLogger;
+  /** Optional metrics registry to forward dispatcher observations into. */
+  metrics?: MetricsRegistry;
   /** Heartbeat poll cadence in ms (defaults to 10 s). */
   pollIntervalMs?: number;
 }
@@ -54,7 +57,15 @@ export async function bootstrapP2p(opts: BootstrapP2pOptions): Promise<CosmicP2p
     workersState: state.workers,
     jobsState: state.jobs,
     log,
+    ...(opts.metrics ? { metrics: opts.metrics } : {}),
   });
+
+  if (opts.metrics) {
+    opts.metrics.attachWorkerGauges(
+      () => registry.size(),
+      () => sumCapacities(state),
+    );
+  }
 
   log.info({ topic: '32B-base64', pubKey: state.identity.publicKeyShort }, 'p2p.ready');
 
@@ -71,6 +82,16 @@ export async function bootstrapP2p(opts: BootstrapP2pOptions): Promise<CosmicP2p
       await swarm.close();
     },
   };
+}
+
+function sumCapacities(state: CosmicState): number {
+  // Sync wrapper that intentionally swallows the async iterator's yield
+  // sequence — metrics is best-effort and the caller doesn't `await`.
+  let total = 0;
+  void (async (): Promise<void> => {
+    for await (const w of state.workers.list()) total += w.capacity;
+  })();
+  return total;
 }
 
 export { InferenceDispatcher } from './dispatcher.js';
