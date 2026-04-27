@@ -27,10 +27,12 @@
     "envalid": "^8.0.0",
     "fastify": "^5.0.0",
     "fastify-plugin": "^5.0.0",
+    "b4a": "^1.6.0",
     "hyperbee": "^2.27.0",
     "hypercore": "^11.0.0",
     "hyperdht": "^6.30.0",
-    "hyperswarm": "^4.7.0"
+    "hyperswarm": "^4.7.0",
+    "protomux": "^3.10.0"
   },
   "devDependencies": {
     "@types/node": "^22.7.0",

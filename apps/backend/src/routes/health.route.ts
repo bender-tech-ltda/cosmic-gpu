@@ -1,5 +1,7 @@
-// Liveness endpoint. P2P fields are placeholders until Step 6 wires the
-// real swarm peer count via a backend decorator.
+// Liveness endpoint. P2P fields are sourced from the live worker registry
+// when the P2P plugin is registered (production / dev). In tests where the
+// plugin is skipped, the route falls back to the legacy placeholder so the
+// HealthResponse shape stays stable.
 
 import { HealthResponse, type HealthResponse as HealthResponseType } from '@cosmic/shared';
 import type { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
@@ -19,11 +21,14 @@ export const healthRoute: FastifyPluginAsyncTypebox = async (app) => {
         response: { 200: HealthResponse },
       },
     },
-    async (): Promise<HealthResponseType> => ({
-      status: 'ok',
-      uptimeSeconds: process.uptime(),
-      p2p: { connected: false, peers: 0 },
-      version: VERSION,
-    }),
+    async (): Promise<HealthResponseType> => {
+      const peers = app.p2p?.registry.size() ?? 0;
+      return {
+        status: 'ok',
+        uptimeSeconds: process.uptime(),
+        p2p: { connected: peers > 0, peers },
+        version: VERSION,
+      };
+    },
   );
 };

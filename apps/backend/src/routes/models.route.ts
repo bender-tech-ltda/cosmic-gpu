@@ -1,6 +1,7 @@
 // `GET /v1/models` — OpenAI-compatible model listing.
-// Currently returns a hardcoded `mock-llm` entry; Step 6 will replace this
-// with data sourced from the worker registry.
+// Sources the live model ids from the worker registry (when present) and
+// falls back to the hardcoded `mock-llm` entry when no workers are connected
+// yet (or when the P2P plugin is disabled in tests).
 
 import {
   DEFAULT_MODEL_ID,
@@ -9,7 +10,7 @@ import {
 } from '@cosmic/shared';
 import type { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
 
-const MOCK_MODEL: ListModelsResponseType['data'][number] = {
+const FALLBACK_MODEL: ListModelsResponseType['data'][number] = {
   id: DEFAULT_MODEL_ID,
   object: 'model',
   owned_by: 'cosmic',
@@ -29,9 +30,20 @@ export const modelsRoute: FastifyPluginAsyncTypebox = async (app) => {
         response: { 200: ListModelsResponse },
       },
     },
-    async (): Promise<ListModelsResponseType> => ({
-      object: 'list',
-      data: [MOCK_MODEL],
-    }),
+    async (): Promise<ListModelsResponseType> => {
+      const seen = new Set<string>();
+      const data: ListModelsResponseType['data'] = [];
+      for await (const w of app.state.workers.list()) {
+        if (seen.has(w.modelId)) continue;
+        seen.add(w.modelId);
+        data.push({
+          id: w.modelId,
+          object: 'model',
+          owned_by: 'cosmic',
+          capabilities: { streaming: true, max_context: 4096 },
+        });
+      }
+      return { object: 'list', data: data.length > 0 ? data : [FALLBACK_MODEL] };
+    },
   );
 };
