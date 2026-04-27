@@ -12,6 +12,7 @@ import authPlugin from './plugins/auth.plugin.js';
 import corsPlugin from './plugins/cors.plugin.js';
 import errorHandlerPlugin from './plugins/error-handler.plugin.js';
 import helmetPlugin from './plugins/helmet.plugin.js';
+import metricsPlugin from './plugins/metrics.plugin.js';
 import p2pPlugin from './plugins/p2p.plugin.js';
 import rateLimitPlugin from './plugins/rate-limit.plugin.js';
 import requestIdPlugin from './plugins/request-id.plugin.js';
@@ -20,7 +21,9 @@ import swaggerPlugin from './plugins/swagger.plugin.js';
 import { apiKeysRoute } from './routes/api-keys.route.js';
 import { chatCompletionsRoute } from './routes/chat-completions.route.js';
 import { healthRoute } from './routes/health.route.js';
+import { metricsRoute } from './routes/metrics.route.js';
 import { modelsRoute } from './routes/models.route.js';
+import { usageRoute } from './routes/usage.route.js';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -90,6 +93,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await app.register(swaggerPlugin);
   await app.register(requestIdPlugin);
   await app.register(errorHandlerPlugin);
+  await app.register(metricsPlugin);
   await app.register(statePlugin);
   await app.register(authPlugin);
   await app.register(rateLimitPlugin);
@@ -102,9 +106,11 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
 
   // Routes.
   await app.register(healthRoute);
+  await app.register(metricsRoute);
   await app.register(modelsRoute, { prefix: '/v1' });
   await app.register(apiKeysRoute, { prefix: '/v1' });
   await app.register(chatCompletionsRoute, { prefix: '/v1' });
+  await app.register(usageRoute, { prefix: '/v1' });
 
   return app;
 }
