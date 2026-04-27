@@ -3,11 +3,11 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "main": "./dist/worker.js",
+  "main": "./dist/src/worker.js",
   "scripts": {
     "dev": "tsx watch src/worker.ts",
+    "start": "node dist/src/worker.js",
     "build": "tsc -p tsconfig.json",
-    "start": "node dist/worker.js",
     "test": "vitest --passWithNoTests",
     "lint": "eslint --no-error-on-unmatched-pattern src",
     "typecheck": "tsc --noEmit",
@@ -16,13 +16,17 @@
   "dependencies": {
     "@cosmic/shared": "workspace:*",
     "@hyperswarm/rpc": "^3.4.0",
+    "b4a": "^1.6.0",
     "compact-encoding": "^3.0.0",
     "envalid": "^8.0.0",
+    "hyperdht": "^6.30.0",
     "hyperswarm": "^4.7.0",
-    "pino": "^9.5.0"
+    "pino": "^9.5.0",
+    "protomux": "^3.10.0"
   },
   "devDependencies": {
     "@types/node": "^22.7.0",
+    "pino-pretty": "^11.2.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
     "vitest": "^2.1.0"

@@ -181,22 +181,34 @@ importers:
       '@hyperswarm/rpc':
         specifier: ^3.4.0
         version: 3.4.1(bare-url@2.4.2)
+      b4a:
+        specifier: ^1.6.0
+        version: 1.8.0
       compact-encoding:
         specifier: ^3.0.0
         version: 3.0.0
       envalid:
         specifier: ^8.0.0
         version: 8.1.1
+      hyperdht:
+        specifier: ^6.30.0
+        version: 6.30.0(bare-url@2.4.2)
       hyperswarm:
         specifier: ^4.7.0
         version: 4.17.0(bare-url@2.4.2)
       pino:
         specifier: ^9.5.0
         version: 9.14.0
+      protomux:
+        specifier: ^3.10.0
+        version: 3.10.3
     devDependencies:
       '@types/node':
         specifier: ^22.7.0
         version: 22.19.17
+      pino-pretty:
+        specifier: ^11.2.0
+        version: 11.3.0
       tsx:
         specifier: ^4.19.0
         version: 4.21.0
