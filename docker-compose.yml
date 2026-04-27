@@ -1,0 +1,104 @@
+# Local distributed simulation: 1 backend + 3 workers sharing the
+# Hyperswarm discovery topic. Worker containers persist Hyperbee/Hypercore
+# data across restarts via named volumes per worker (per the
+# implementation plan and `docker-and-cicd.mdc`).
+#
+# Usage:
+#   docker compose up --build
+#   docker compose --profile dev up      # opt-in to the frontend container
+
+name: cosmic
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend.Dockerfile
+    image: cosmic/backend:dev
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      BACKEND_HOST: 0.0.0.0
+      BACKEND_PORT: 3000
+      P2P_DISCOVERY_TOPIC: ${P2P_DISCOVERY_TOPIC:-}
+      P2P_BOOTSTRAP: ${P2P_BOOTSTRAP:-}
+      STATE_BACKEND: hyperbee
+      DATA_DIR: /data
+      NODE_KEYPAIR_PATH: /data/node.keypair
+    ports:
+      - '3000:3000'
+    volumes:
+      - backend-data:/data
+    networks: [cosmic-net]
+    depends_on: [worker1]
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  worker1:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    image: cosmic/worker:dev
+    env_file: .env
+    environment:
+      WORKER_ID: worker1
+      P2P_DISCOVERY_TOPIC: ${P2P_DISCOVERY_TOPIC:-}
+      P2P_BOOTSTRAP: ${P2P_BOOTSTRAP:-}
+      DATA_DIR: /data
+      NODE_KEYPAIR_PATH: /data/node.keypair
+    volumes:
+      - worker1-data:/data
+    networks: [cosmic-net]
+    restart: unless-stopped
+
+  worker2:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    image: cosmic/worker:dev
+    env_file: .env
+    environment:
+      WORKER_ID: worker2
+      P2P_DISCOVERY_TOPIC: ${P2P_DISCOVERY_TOPIC:-}
+      P2P_BOOTSTRAP: ${P2P_BOOTSTRAP:-}
+      DATA_DIR: /data
+      NODE_KEYPAIR_PATH: /data/node.keypair
+    volumes:
+      - worker2-data:/data
+    networks: [cosmic-net]
+    restart: unless-stopped
+
+  worker3:
+    build:
+      context: .
+      dockerfile: docker/worker.Dockerfile
+    image: cosmic/worker:dev
+    env_file: .env
+    environment:
+      WORKER_ID: worker3
+      P2P_DISCOVERY_TOPIC: ${P2P_DISCOVERY_TOPIC:-}
+      P2P_BOOTSTRAP: ${P2P_BOOTSTRAP:-}
+      DATA_DIR: /data
+      NODE_KEYPAIR_PATH: /data/node.keypair
+    volumes:
+      - worker3-data:/data
+    networks: [cosmic-net]
+    restart: unless-stopped
+
+networks:
+  cosmic-net:
+    driver: bridge
+
+volumes:
+  backend-data:
+  worker1-data:
+  worker2-data:
+  worker3-data:
