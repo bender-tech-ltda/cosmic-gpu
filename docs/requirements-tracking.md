@@ -18,75 +18,91 @@ This file tracks the **40 requirements** extracted from the task brief and the j
 
 ## Functional Requirements (FR)
 
-| ID    | Requirement                                |  S1 |  S2 |  S3 | S4a |  S4b | Notes                                                       |
-| ----- | ------------------------------------------ | --: | --: | --: | --: | ---: | ----------------------------------------------------------- |
-| FR-01 | Backend manages API keys (CRUD)            |  0% | 10% | 10% | 25% | 100% | Service + routes (POST/GET/DELETE) + 13 tests; Swagger live |
-| FR-02 | Backend handles inference requests         |  0% | 10% | 10% | 10% |  10% | RPC schemas defined; routing Step 6                         |
-| FR-03 | Backend simulates workload distribution    |  0% |  0% |  0% | 10% |  10% | Worker registry accessor available                          |
-| FR-04 | P2P / distributed task queue               |  0% |  5% |  5% | 15% |  15% | Jobs accessor available                                     |
-| FR-05 | Frontend — API key management UI           |  0% |  5% |  5% |  5% |  10% | Backend endpoints ready to consume                          |
-| FR-06 | Frontend — usage monitoring UI             |  0% |  5% |  5% |  5% |   5% | Usage DTO defined                                           |
-| FR-07 | Frontend — basic model deployment workflow |  0% |  5% |  5% |  5% |   5% | Model DTO defined                                           |
-| FR-08 | OpenAI-compatible streaming endpoint       |  0% | 15% | 15% | 15% |  15% | Chunk DTO + SSE constants                                   |
-| FR-09 | OpenAI-compatible non-streaming endpoint   |  0% | 15% | 15% | 15% |  20% | Auth plugin ready to gate the route                         |
-| FR-10 | Usage tracking                             |  0% |  5% |  5% | 25% |  25% | UsageState accessor + windows logic                         |
-| FR-11 | Rate limiting                              |  0% |  5% |  5% |  5% | 100% | Per-key + per-IP buckets; 429 envelope + Retry-After tests  |
-| FR-12 | Metrics dashboard                          |  0% |  0% |  0% |  0% |   0% | —                                                           |
-| FR-13 | Health check endpoint                      |  0% | 10% | 75% | 75% |  80% | Liveness route opted out of rate limit                      |
+| ID    | Requirement                                |  S1 |  S2 |  S3 | S4a |  S4b |   CP | Notes                                                               |
+| ----- | ------------------------------------------ | --: | --: | --: | --: | ---: | ---: | ------------------------------------------------------------------- |
+| FR-01 | Backend manages API keys (CRUD)            |  0% | 10% | 10% | 25% | 100% | 100% | Audit events now emitted on create + revoke                         |
+| FR-02 | Backend handles inference requests         |  0% | 10% | 10% | 10% |  10% |  10% | RPC schemas defined; routing Step 6                                 |
+| FR-03 | Backend simulates workload distribution    |  0% |  0% |  0% | 10% |  10% |  10% | Worker registry accessor available                                  |
+| FR-04 | P2P / distributed task queue               |  0% |  5% |  5% | 15% |  15% |  20% | Streaming transport decision (Protomux vs RPC) locked in docs+rules |
+| FR-05 | Frontend — API key management UI           |  0% |  5% |  5% |  5% |  10% |  10% | Backend endpoints ready to consume                                  |
+| FR-06 | Frontend — usage monitoring UI             |  0% |  5% |  5% |  5% |   5% |   5% | Usage DTO defined                                                   |
+| FR-07 | Frontend — basic model deployment workflow |  0% |  5% |  5% |  5% |   5% |   5% | Model DTO defined                                                   |
+| FR-08 | OpenAI-compatible streaming endpoint       |  0% | 15% | 15% | 15% |  15% |  20% | Streaming transport documented (SSE ↔ Protomux)                     |
+| FR-09 | OpenAI-compatible non-streaming endpoint   |  0% | 15% | 15% | 15% |  20% |  20% | Auth plugin ready to gate the route                                 |
+| FR-10 | Usage tracking                             |  0% |  5% |  5% | 25% |  25% |  25% | UsageState accessor + windows logic                                 |
+| FR-11 | Rate limiting                              |  0% |  5% |  5% |  5% | 100% |  90% | Behaviour at 100%; doc trade-off captured in `docs/architecture.md` |
+| FR-12 | Metrics dashboard                          |  0% |  0% |  0% |  0% |   0% |   0% | —                                                                   |
+| FR-13 | Health check endpoint                      |  0% | 10% | 75% | 75% |  80% |  80% | Liveness route opted out of rate limit                              |
 
 ## Tech Stack Adherence (TS)
 
-| ID    | Requirement                    |  S1 |  S2 |  S3 | S4a | S4b | Notes                                                                  |
-| ----- | ------------------------------ | --: | --: | --: | --: | --: | ---------------------------------------------------------------------- |
-| TS-01 | Node.js + Fastify backend      | 25% | 40% | 65% | 65% | 80% | Auth + rate-limit plugins added; Bearer security scheme exposed in OAS |
-| TS-02 | Hyperswarm RPC / Hyperswarm    | 25% | 40% | 40% | 40% | 40% | Schemas only; runtime in Steps 5–6                                     |
-| TS-03 | HyperDB (or similar K/V store) | 25% | 35% | 35% | 65% | 70% | Hyperbee adapter exercised end-to-end via API key lifecycle            |
+| ID    | Requirement                    |  S1 |  S2 |  S3 | S4a | S4b |  CP | Notes                                                                 |
+| ----- | ------------------------------ | --: | --: | --: | --: | --: | --: | --------------------------------------------------------------------- |
+| TS-01 | Node.js + Fastify backend      | 25% | 40% | 65% | 65% | 80% | 85% | Pino redact + explicit bodyLimit; audit events surface lifecycle data |
+| TS-02 | Hyperswarm RPC / Hyperswarm    | 25% | 40% | 40% | 40% | 40% | 50% | Real seed-derived keypair ready for Step 5; transport decision locked |
+| TS-03 | HyperDB (or similar K/V store) | 25% | 35% | 35% | 65% | 70% | 75% | Unused `hyperdb` dropped; Hyperbee remains the canonical adapter      |
 
 ## Non-Functional / Best Practices (NFR)
 
-| ID     | Requirement                     |  S1 |  S2 |  S3 | S4a | S4b | Notes                                                                 |
-| ------ | ------------------------------- | --: | --: | --: | --: | --: | --------------------------------------------------------------------- |
-| NFR-01 | Clean modular architecture      | 50% | 60% | 70% | 80% | 85% | Service / plugin / route layering proven on first vertical slice      |
-| NFR-02 | Proper error handling           |  0% | 15% | 50% | 50% | 70% | DomainError covers all auth + lifecycle paths; 429 mapped to envelope |
-| NFR-03 | Input validation                |  0% | 25% | 40% | 40% | 60% | TypeBox-validated body / params on api-keys route                     |
-| NFR-04 | Env-var configuration           | 50% | 50% | 75% | 80% | 80% | `STATE_BACKEND` added; auto-default in tests                          |
-| NFR-05 | Async patterns / resource mgmt  |  0% |  0% | 30% | 40% | 45% | Async iterator list contract; onClose cleanup                         |
-| NFR-06 | Frontend responsive             |  0% |  0% |  0% |  0% |  0% | —                                                                     |
-| NFR-07 | Frontend state management       |  0% |  0% |  0% |  0% |  0% | —                                                                     |
-| NFR-08 | Frontend real-time updates      |  0% |  0% |  0% |  0% |  0% | —                                                                     |
-| NFR-09 | Frontend loading / error states |  0% |  0% |  0% |  0% |  0% | —                                                                     |
-| NFR-10 | Local distributed simulation    |  0% |  0% |  0% |  0% |  0% | —                                                                     |
-| NFR-11 | Documented scaling approach     |  0% |  0% |  0% |  0% |  5% | Note in plan: rate-limit store → Redis/HyperDB for multi-process      |
-| NFR-12 | Failure scenarios + resilience  |  0% |  5% |  5% | 15% | 25% | Constant-time hash compare; revoked-key path covered                  |
-| NFR-13 | TypeScript / type safety        | 75% | 90% | 90% | 95% | 95% | Typed accessors + augmented FastifyRequest.apiKey                     |
-| NFR-14 | Logging / observability         |  0% |  0% | 40% | 45% | 50% | Domain-error / rate-limit warn logs                                   |
+| ID     | Requirement                     |  S1 |  S2 |  S3 | S4a | S4b |  CP | Notes                                                                  |
+| ------ | ------------------------------- | --: | --: | --: | --: | --: | --: | ---------------------------------------------------------------------- |
+| NFR-01 | Clean modular architecture      | 50% | 60% | 70% | 80% | 85% | 88% | Observability split into its own module                                |
+| NFR-02 | Proper error handling           |  0% | 15% | 50% | 50% | 70% | 70% | DomainError covers auth + lifecycle; 429 mapped to envelope            |
+| NFR-03 | Input validation                |  0% | 25% | 40% | 40% | 60% | 60% | TypeBox-validated body / params on api-keys route                      |
+| NFR-04 | Env-var configuration           | 50% | 50% | 75% | 80% | 80% | 90% | `BACKEND_BODY_LIMIT_BYTES` + `P2P_BOOTSTRAP` added; loader typed       |
+| NFR-05 | Async patterns / resource mgmt  |  0% |  0% | 30% | 40% | 45% | 45% | Async iterator list contract; onClose cleanup                          |
+| NFR-06 | Frontend responsive             |  0% |  0% |  0% |  0% |  0% |  0% | —                                                                      |
+| NFR-07 | Frontend state management       |  0% |  0% |  0% |  0% |  0% |  0% | —                                                                      |
+| NFR-08 | Frontend real-time updates      |  0% |  0% |  0% |  0% |  0% |  0% | —                                                                      |
+| NFR-09 | Frontend loading / error states |  0% |  0% |  0% |  0% |  0% |  0% | —                                                                      |
+| NFR-10 | Local distributed simulation    |  0% |  0% |  0% |  0% |  0% | 50% | Compose scaffold (1 backend + 3 workers) + Dockerfiles in place        |
+| NFR-11 | Documented scaling approach     |  0% |  0% |  0% |  0% |  5% | 60% | `docs/architecture.md` §5 covers scaling vectors + future improvements |
+| NFR-12 | Failure scenarios + resilience  |  0% |  5% |  5% | 15% | 25% | 35% | Failure-table in architecture doc; transport split de-risks streaming  |
+| NFR-13 | TypeScript / type safety        | 75% | 90% | 90% | 95% | 95% | 95% | Typed accessors + augmented `FastifyRequest.apiKey`                    |
+| NFR-14 | Logging / observability         |  0% |  0% | 40% | 45% | 50% | 70% | Pino redact paths + audit-event helper in service code                 |
 
 ## Deliverables (DEL)
 
-| ID     | Requirement                                |   S1 |   S2 |   S3 |  S4a |  S4b | Notes                                   |
-| ------ | ------------------------------------------ | ---: | ---: | ---: | ---: | ---: | --------------------------------------- |
-| DEL-01 | GitHub repo + README + setup               |  50% |  50% |  50% |  50% |  50% | Polish in Step 12                       |
-| DEL-02 | Live demo URL (bonus)                      |   0% |   0% |   0% |   0% |   0% | —                                       |
-| DEL-03 | OpenAPI spec                               |   0% |  15% |  50% |  50% |  65% | api-keys endpoints + Bearer scheme live |
-| DEL-04 | Architecture document                      |   0% |   0% |   0% |   0% |   0% | —                                       |
-| DEL-05 | Demo video (≤5 min)                        |   0% |   0% |   0% |   0% |   0% | —                                       |
-| DEL-06 | Folder structure (backend/frontend/shared) | 100% | 100% | 100% | 100% | 100% | ✅ Done                                 |
-| DEL-07 | Docker Compose setup                       |   0% |   0% |   0% |   0% |   0% | Step 6.5                                |
-| DEL-08 | `.env.example`                             | 100% | 100% | 100% | 100% | 100% | ✅ Done; STATE_BACKEND added            |
-| DEL-09 | Basic test coverage                        |  25% |  35% |  45% |  55% |  70% | 75 tests across shared + backend        |
-| DEL-10 | CI/CD pipeline                             |   0% |   0% |   0% |   0% |   0% | Step 6.5                                |
+| ID     | Requirement                                |   S1 |   S2 |   S3 |  S4a |  S4b |   CP | Notes                                                                                                     |
+| ------ | ------------------------------------------ | ---: | ---: | ---: | ---: | ---: | ---: | --------------------------------------------------------------------------------------------------------- |
+| DEL-01 | GitHub repo + README + setup               |  50% |  50% |  50% |  50% |  50% |  50% | README polish in Step 12                                                                                  |
+| DEL-02 | Live demo URL (bonus)                      |   0% |   0% |   0% |   0% |   0% |   0% | —                                                                                                         |
+| DEL-03 | OpenAPI spec                               |   0% |  15% |  50% |  50% |  65% |  65% | api-keys endpoints + Bearer scheme live                                                                   |
+| DEL-04 | Architecture document                      |   0% |   0% |   0% |   0% |   0% |  75% | `docs/architecture.md` covers system / distributed / trade-offs / failure / scaling / future improvements |
+| DEL-05 | Demo video (≤5 min)                        |   0% |   0% |   0% |   0% |   0% |   0% | —                                                                                                         |
+| DEL-06 | Folder structure (backend/frontend/shared) | 100% | 100% | 100% | 100% | 100% | 100% | ✅ Done                                                                                                   |
+| DEL-07 | Docker Compose setup                       |   0% |   0% |   0% |   0% |   0% |  60% | 1 backend + 3 workers compose + Dockerfiles + .dockerignore                                               |
+| DEL-08 | `.env.example`                             | 100% | 100% | 100% | 100% | 100% | 100% | ✅ Done; bodyLimit + P2P_BOOTSTRAP added                                                                  |
+| DEL-09 | Basic test coverage                        |  25% |  35% |  45% |  55% |  70% |  80% | 92 tests across shared + backend (+17 since S4b)                                                          |
+| DEL-10 | CI/CD pipeline                             |   0% |   0% |   0% |   0% |   0% |  75% | `.github/workflows/ci.yml` (lint/typecheck/test/build/format)                                             |
 
 ---
 
 ## Aggregate Progress
 
-| Bucket                              |       S1 |       S2 |       S3 |      S4a |      S4b |
-| ----------------------------------- | -------: | -------: | -------: | -------: | -------: |
-| Functional Requirements (FR, 13)    |       0% |      ~8% |     ~13% |     ~16% |     ~30% |
-| Tech Stack (TS, 3)                  |      25% |     ~38% |     ~47% |     ~57% |     ~63% |
-| Non-Functional (NFR, 14)            |     ~14% |     ~18% |     ~30% |     ~36% |     ~42% |
-| Deliverables (DEL, 10)              |   ~32.5% |     ~35% |   ~39.5% |   ~40.5% |     ~45% |
-| **Overall (40 items, simple mean)** | **~13%** | **~18%** | **~25%** | **~30%** | **~40%** |
+| Bucket                              |       S1 |       S2 |       S3 |      S4a |      S4b |       CP |
+| ----------------------------------- | -------: | -------: | -------: | -------: | -------: | -------: |
+| Functional Requirements (FR, 13)    |       0% |      ~8% |     ~13% |     ~16% |     ~30% |     ~31% |
+| Tech Stack (TS, 3)                  |      25% |     ~38% |     ~47% |     ~57% |     ~63% |     ~70% |
+| Non-Functional (NFR, 14)            |     ~14% |     ~18% |     ~30% |     ~36% |     ~42% |     ~48% |
+| Deliverables (DEL, 10)              |   ~32.5% |     ~35% |   ~39.5% |   ~40.5% |     ~45% |     ~61% |
+| **Overall (40 items, simple mean)** | **~13%** | **~18%** | **~25%** | **~30%** | **~40%** | **~46%** |
+
+> **CP = Pre-Step-5 Correction Pass.** Combined the Cursor + Warp + verdict suggestions into one pass: seed-derived ed25519 identity (real keypair), `docs/architecture.md`, GitHub Actions CI, Docker Compose with 1 backend + 3 workers, Pino redaction + explicit bodyLimit + audit-event helper, `BACKEND_BODY_LIMIT_BYTES` and `P2P_BOOTSTRAP` env, dropped unused `hyperdb`, Compact Encoding edge tests, locked the streaming transport choice in `.cursor/rules/p2p-architecture.mdc` and `docs/architecture.md`.
+
+## Deliberate trade-offs
+
+Full list lives in [`docs/architecture.md` §4](./architecture.md#4-trade-offs-and-deliberate-divergences). Summary:
+
+- Plain Node.js, not Pear Runtime / Bare.
+- Hyperbee on Hypercore, not HyperDB.
+- Single-writer Hyperbee, not multi-peer replication.
+- `POST/GET/DELETE /v1/api-keys` are public for the take-home demo.
+- `@fastify/rate-limit` uses the default in-memory store (single-instance only).
+- Mock LLM workers, not real model serving.
+- Fixed-point float encoding (×1000) for `temperature` / `topP` over RPC.
+- Mark & Sweep GC, Fork-ID truncate handling, and signed RPC results are deferred (see `docs/architecture.md` §6).
+- Study-guide encryption phrasing corrected: Hyperswarm uses Noise (asymmetric handshake → symmetric session keys).
 
 ---
 
@@ -144,6 +160,20 @@ This file tracks the **40 requirements** extracted from the task brief and the j
 - `health` and `models` routes opt out of rate limiting via `config: { rateLimit: false }`.
 - 39 new tests: 18 crypto, 9 service, 5 auth-plugin (happy path + 4 rejection branches), 3 rate-limit plugin (429 envelope, per-key isolation, /health opt-out), 4 routes. Total now **75 / 75**.
 - Result: API key lifecycle, Bearer auth, and per-key rate limiting are production-shaped and ready to be applied as a `preHandler` on the inference routes in Step 6.
+
+### Pre-Step-5 Correction Pass (CP)
+
+Merged correction pass driven by [`.cursor/plans/llm-verdict-evaluation.md`](../.cursor/plans/llm-verdict-evaluation.md) (the third-model adjudication of the Cursor + Warp evaluations). Eight focused changes, ordered to communicate first, unblock Step 5 second, and ship deliverable scaffolding third:
+
+- **Architecture document**: [`docs/architecture.md`](./architecture.md) covers system design, distributed approach, transport split (Hyperswarm RPC for `inference.run` + `worker.health`; Protomux substream over the encrypted Hyperswarm session for `inference.stream`), trade-offs, failure scenarios, scaling, and future improvements.
+- **Identity** (`apps/backend/src/state/identity.ts`): persists a 32-byte ed25519 **seed**; the real `{ publicKey: 32B, secretKey: 64B }` pair is derived on each boot via `HyperDHT.keyPair(seed)` (libsodium `crypto_sign_seed_keypair`). Tests now cover seed-only on-disk shape, deterministic re-load, malformed JSON, missing seed field, and wrong-length seed.
+- **Streaming transport rule update**: [`.cursor/rules/p2p-architecture.mdc`](../.cursor/rules/p2p-architecture.mdc) now documents the RPC vs Protomux split so the rule and the architecture doc agree.
+- **CI**: `.github/workflows/ci.yml` runs lint → typecheck → test → build → format:check on Node 22 + pnpm 9 for every push to `main` and every pull request.
+- **Docker scaffolding**: `docker/backend.Dockerfile`, `docker/worker.Dockerfile`, root `docker-compose.yml` with 1 backend + 3 workers, named volumes per worker, shared `P2P_DISCOVERY_TOPIC`, healthcheck on `/health`, `.dockerignore`. Multi-stage builds run as `USER node` on `node:22-bookworm-slim` (chosen over Alpine for native Holepunch bindings).
+- **Backend hardening**: explicit Fastify `bodyLimit` driven by `BACKEND_BODY_LIMIT_BYTES` (default 1 MiB); Pino `redact` paths censor `authorization` headers, `body.messages[*].content`, and any `plaintext` field with `[REDACTED]`.
+- **Audit-event helper** (`apps/backend/src/observability/audit.ts`): typed `AUDIT_EVENT` map + `logEvent()` helper now emits `event=api-key.created` and `event=api-key.revoked` from `ApiKeysService`. Auth plugin threads `app.log` into the service.
+- **Wire forward**: dropped the unused `hyperdb` dependency; added `P2P_BOOTSTRAP` env to the typed config loader and `.env.example` for self-contained Compose runs.
+- **Compact Encoding edge tests**: empty content, very long content (~64 KiB), multi-byte UTF-8 in delta and worker fields, all three `finishReason` variants, fixed-point precision, and zero/boundary token counts. Total now **92 / 92** tests (was 75).
 
 ### Step 5 — Worker runtime (next)
 

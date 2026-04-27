@@ -45,4 +45,50 @@ describe('inferenceResponseCodec', () => {
     expect(decode(inferenceResponseCodec, a).kind).toBe('chunk');
     expect(decode(inferenceResponseCodec, b).kind).toBe('final');
   });
+
+  it('round-trips multi-byte UTF-8 in delta', () => {
+    const original: InferenceResponse = {
+      kind: 'chunk',
+      jobId: 'job_1',
+      delta: '🚀 café 漢字 🌌',
+    };
+    const buf = encode(inferenceResponseCodec, original);
+    const decoded = decode(inferenceResponseCodec, buf);
+    expect(decoded).toEqual(original);
+  });
+
+  it('round-trips an empty delta string', () => {
+    const original: InferenceResponse = { kind: 'chunk', jobId: 'j', delta: '' };
+    const buf = encode(inferenceResponseCodec, original);
+    expect(decode(inferenceResponseCodec, buf)).toEqual(original);
+  });
+
+  it.each([['stop'], ['length'], ['cancelled']] as const)(
+    'round-trips finishReason=%s',
+    (finishReason) => {
+      const original: InferenceResponse = {
+        kind: 'final',
+        jobId: 'j',
+        finishReason,
+        promptTokens: 0,
+        completionTokens: 0,
+        workerPubKey: 'wk',
+      };
+      const buf = encode(inferenceResponseCodec, original);
+      expect(decode(inferenceResponseCodec, buf)).toEqual(original);
+    },
+  );
+
+  it('round-trips zero token counts', () => {
+    const original: InferenceResponse = {
+      kind: 'final',
+      jobId: 'j',
+      finishReason: 'stop',
+      promptTokens: 0,
+      completionTokens: 0,
+      workerPubKey: 'wk',
+    };
+    const buf = encode(inferenceResponseCodec, original);
+    expect(decode(inferenceResponseCodec, buf)).toEqual(original);
+  });
 });

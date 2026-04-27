@@ -55,4 +55,43 @@ describe('inferenceRequestCodec', () => {
     expect(decoded.topP).toBeUndefined();
     expect(decoded.maxTokens).toBeUndefined();
   });
+
+  it('round-trips an empty content string', () => {
+    const original = fixture({ messages: [{ role: 'user', content: '' }] });
+    const buf = encode(inferenceRequestCodec, original);
+    const decoded = decode(inferenceRequestCodec, buf);
+    expect(decoded.messages[0]?.content).toBe('');
+  });
+
+  it('round-trips a very long content string (~64 KiB)', () => {
+    const long = 'a'.repeat(64 * 1024);
+    const original = fixture({ messages: [{ role: 'user', content: long }] });
+    const buf = encode(inferenceRequestCodec, original);
+    const decoded = decode(inferenceRequestCodec, buf);
+    expect(decoded.messages[0]?.content.length).toBe(long.length);
+    expect(decoded.messages[0]?.content).toBe(long);
+  });
+
+  it('rounds fixed-point floats to 3-decimal precision', () => {
+    // The wire format encodes temperature/topP as cuint of (value*1000).
+    // Anything beyond the millisecond is truncated by Math.round.
+    const original = fixture({ temperature: 0.7345 });
+    const buf = encode(inferenceRequestCodec, original);
+    const decoded = decode(inferenceRequestCodec, buf);
+    expect(decoded.temperature).toBeCloseTo(0.735, 3);
+  });
+
+  it('round-trips a large maxTokens (uint32-ish)', () => {
+    const original = fixture({ maxTokens: 1_000_000 });
+    const buf = encode(inferenceRequestCodec, original);
+    const decoded = decode(inferenceRequestCodec, buf);
+    expect(decoded.maxTokens).toBe(1_000_000);
+  });
+
+  it('round-trips temperature = 0 (boundary check, not treated as absent)', () => {
+    const original = fixture({ temperature: 0 });
+    const buf = encode(inferenceRequestCodec, original);
+    const decoded = decode(inferenceRequestCodec, buf);
+    expect(decoded.temperature).toBe(0);
+  });
 });

@@ -28,14 +28,20 @@ const swarm = new Hyperswarm();
 swarm.join(GPU_DISCOVERY_TOPIC, { client: true, server: true });
 ```
 
-## RPC
+## RPC and streaming transport
 
-- Use **Hyperswarm RPC** (`@hyperswarm/rpc`) for all backend↔worker request/response and streaming.
-- One RPC method per worker capability:
+`@hyperswarm/rpc` is a request/response RPC layer; it does not natively support streamed responses. We deliberately split the transport so the contract is unambiguous:
+
+- **`@hyperswarm/rpc`** — request/response only. Used for:
   - `inference.run(request)` — non-streaming completion
-  - `inference.stream(request)` — streaming completion (yields chunks)
   - `worker.health()` — heartbeat / capacity report
-- All RPC payloads are encoded with **Compact Encoding**.
+- **Protomux channel over the encrypted Hyperswarm secret stream** — used for:
+  - `inference.stream(request)` — token-by-token streaming
+  Each chunk is a Compact-Encoded `InferenceResponseChunk`; the channel terminates with an `InferenceResponseFinal`. Cancellation is propagated by closing the channel; the worker's generator observes the close and aborts.
+
+Both transports run on top of the same Noise-encrypted Hyperswarm session. The split is reflected in `docs/architecture.md` §2.3 so the rule and the architecture doc agree.
+
+All RPC payloads are encoded with **Compact Encoding**.
 
 ## Compact Encoding (MANDATORY)
 
