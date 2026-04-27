@@ -12,6 +12,7 @@ import corsPlugin from './plugins/cors.plugin.js';
 import errorHandlerPlugin from './plugins/error-handler.plugin.js';
 import helmetPlugin from './plugins/helmet.plugin.js';
 import requestIdPlugin from './plugins/request-id.plugin.js';
+import statePlugin from './plugins/state.plugin.js';
 import swaggerPlugin from './plugins/swagger.plugin.js';
 import { healthRoute } from './routes/health.route.js';
 import { modelsRoute } from './routes/models.route.js';
@@ -62,6 +63,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   await app.register(swaggerPlugin);
   await app.register(requestIdPlugin);
   await app.register(errorHandlerPlugin);
+  await app.register(statePlugin);
 
   // Routes.
   await app.register(healthRoute);

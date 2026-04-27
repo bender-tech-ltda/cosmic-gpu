@@ -74,6 +74,12 @@ importers:
       fastify-plugin:
         specifier: ^5.0.0
         version: 5.1.0
+      hyperbee:
+        specifier: ^2.27.0
+        version: 2.27.3
+      hypercore:
+        specifier: ^11.0.0
+        version: 11.28.1(bare-url@2.4.2)
       hyperdb:
         specifier: ^6.0.0
         version: 6.6.0(bare-url@2.4.2)

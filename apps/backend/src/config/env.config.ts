@@ -15,6 +15,7 @@ export interface BackendConfig {
   P2P_DISCOVERY_TOPIC: string;
   NODE_KEYPAIR_PATH: string;
   DATA_DIR: string;
+  STATE_BACKEND: 'memory' | 'hyperbee';
 }
 
 /**
@@ -23,6 +24,11 @@ export interface BackendConfig {
  * raw env source as the first argument).
  */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): BackendConfig {
+  // Detect NODE_ENV up front so `STATE_BACKEND` can default to `memory` in
+  // tests without requiring CI to set the env var explicitly.
+  const detectedNodeEnv = env.NODE_ENV ?? 'development';
+  const defaultStateBackend = detectedNodeEnv === 'test' ? 'memory' : 'hyperbee';
+
   const cleaned = cleanEnv(env, {
     NODE_ENV: str({
       choices: ['development', 'production', 'test'],
@@ -42,6 +48,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BackendConfig 
     P2P_DISCOVERY_TOPIC: str({ default: '' }),
     NODE_KEYPAIR_PATH: str({ default: './data/node.keypair' }),
     DATA_DIR: str({ default: './data' }),
+    STATE_BACKEND: str({
+      choices: ['memory', 'hyperbee'],
+      default: defaultStateBackend,
+    }),
   });
 
   return {
@@ -55,5 +65,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BackendConfig 
     P2P_DISCOVERY_TOPIC: cleaned.P2P_DISCOVERY_TOPIC,
     NODE_KEYPAIR_PATH: cleaned.NODE_KEYPAIR_PATH,
     DATA_DIR: cleaned.DATA_DIR,
+    STATE_BACKEND: cleaned.STATE_BACKEND,
   };
 }
