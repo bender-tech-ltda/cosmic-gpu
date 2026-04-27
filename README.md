@@ -1,19 +1,36 @@
+<div align="center">
+
 # Cosmic — Distributed GPU Cloud Service
+
+[![CI Status](https://github.com/your-repo/cosmic/actions/workflows/ci.yml/badge.svg)](https://github.com/your-repo/cosmic/actions/workflows/ci.yml)
+[![Node.js](https://img.shields.io/badge/Node.js-22+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![Fastify](https://img.shields.io/badge/Fastify-000000?logo=fastify&logoColor=white)](https://fastify.dev/)
+[![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 
 A simplified, decentralized AI PaaS built on the Holepunch P2P stack. Demonstrates API key management, OpenAI-compatible inference, and workload distribution across simulated GPU "worker nodes".
 
-> Take-home assignment for the **Senior Fullstack Software Engineer** role at Tether Operations Limited. Scope: 2 days. See [`CLAUDE.md`](./CLAUDE.md) for the full project brief and operating procedure.
+> **Note:** Take-home assignment for the **Senior Fullstack Software Engineer** role at Tether Operations Limited. Scope: 2 days. See [`CLAUDE.md`](./CLAUDE.md) for the full project brief and operating procedure.
+
+</div>
+
+---
 
 ## High-Level Architecture
 
-```
-Browser (React)
-   │ HTTP + SSE
-   ▼
-Backend (Fastify)  ──── Hyperbee on Hypercore (state, behind a swappable KvStore)
-   │ Hyperswarm RPC  +  Protomux substream (streaming)
-   ▼
-Worker × N  ──── Hyperswarm (P2P discovery via HyperDHT + Noise)
+```mermaid
+flowchart TD
+    Browser["Browser (React)"]
+    Backend["Backend (Fastify)"]
+    State["Hyperbee on Hypercore\n(state, behind a swappable KvStore)"]
+    Workers["Worker × N"]
+    Swarm["Hyperswarm\n(P2P discovery via HyperDHT + Noise)"]
+
+    Browser -->|"HTTP + SSE"| Backend
+    Backend --- State
+    Backend -->|"Hyperswarm RPC +\nProtomux substream (streaming)"| Workers
+    Workers --- Swarm
 ```
 
 - **Backend** acts as a dispatcher. It exposes OpenAI-compatible endpoints and routes inference work to available workers via Hyperswarm RPC.
@@ -24,9 +41,20 @@ Worker × N  ──── Hyperswarm (P2P discovery via HyperDHT + Noise)
 
 For the architectural decisions, trade-offs, and scalability considerations, see [`docs/architecture.md`](./docs/architecture.md). Live progress is tracked in [`docs/requirements-tracking.md`](./docs/requirements-tracking.md).
 
+---
+
+## Built With
+
+- [![Holepunch](https://img.shields.io/badge/Holepunch-P2P-blue?style=flat-square)](https://holepunch.to/) - P2P discovery and streaming
+- [![Fastify](https://img.shields.io/badge/Fastify-API-black?style=flat-square&logo=fastify)](https://fastify.dev/) - Backend API dispatcher
+- [![React](https://img.shields.io/badge/React-Frontend-20232A?style=flat-square&logo=react&logoColor=61DAFB)](https://react.dev/) - Dashboard UI
+- [![Vite](https://img.shields.io/badge/Vite-Bundler-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vitejs.dev/) - Frontend tooling
+
+---
+
 ## Repository Layout
 
-```
+```text
 .
 ├── apps/
 │   ├── backend/    # Fastify API + dispatcher
@@ -42,77 +70,100 @@ For the architectural decisions, trade-offs, and scalability considerations, see
 └── CLAUDE.md       # AI assistant north-star
 ```
 
+---
+
 ## Prerequisites
 
-- Node.js 22+ (`.nvmrc` provided — run `nvm use`).
-- pnpm 9+ (`corepack enable && corepack prepare pnpm@9.12.0 --activate`).
-- Docker + Docker Compose (for the distributed simulation).
+- **Node.js 22+** (`.nvmrc` provided — run `nvm use`).
+- **pnpm 9+** (`corepack enable && corepack prepare pnpm@9.12.0 --activate`).
+- **Docker + Docker Compose** (for the distributed simulation).
+
+---
 
 ## Quick Start (Native)
 
+**1. Install dependencies**
 ```bash
-# 1. Install
 nvm use
 pnpm install
+```
 
-# 2. Configure
+**2. Configure environment**
+```bash
 cp .env.example .env
 # (Optionally generate a real P2P topic and HMAC secret per comments in .env.example)
+```
 
-# 3. Run (in separate terminals)
+**3. Run the apps (in separate terminals)**
+```bash
 pnpm --filter @cosmic/backend dev
 pnpm --filter @cosmic/worker dev
 pnpm --filter @cosmic/frontend dev
+```
 
-# 4. Visit
+**4. Visit the dashboard and API docs**
+```bash
 open http://localhost:5173        # frontend
 open http://localhost:3000/docs   # OpenAPI / Swagger UI
 ```
 
+---
+
 ## Quick Start (Docker Compose — Distributed Simulation)
 
+**1. Configure environment**
 ```bash
 cp .env.example .env
+```
+
+**2. Start the swarm**
+```bash
 pnpm compose:up         # docker compose up --build
-# 1 backend + 3 workers join the same Hyperswarm topic
-# When you're done:
+```
+> 1 backend + 3 workers join the same Hyperswarm topic
+
+**3. Stop the swarm (when done)**
+```bash
 pnpm compose:down       # docker compose down -v
 ```
 
-If the public Holepunch DHT is unreachable from your network, opt into the
-self-contained `p2p-local` profile to spin up an in-Compose HyperDHT bootstrap
-node alongside the backend and workers:
+If the public Holepunch DHT is unreachable from your network, opt into the self-contained `p2p-local` profile to spin up an in-Compose HyperDHT bootstrap node alongside the backend and workers:
 
 ```bash
 docker compose --profile p2p-local up --build
 ```
 
-The profile sets `P2P_BOOTSTRAP=dht:49737` for both backend and workers. You
-can also point at any external bootstrap by setting `P2P_BOOTSTRAP=host:port[,...]`
-in `.env`.
+The profile sets `P2P_BOOTSTRAP=dht:49737` for both backend and workers. You can also point at any external bootstrap by setting `P2P_BOOTSTRAP=host:port[,...]` in `.env`.
+
+---
 
 ### Smoke run
 
 With Compose up, exercise the full pipeline end-to-end:
 
+**1. Confirm the swarm formed**
 ```bash
-# 1. Confirm the swarm formed.
 curl -s :3000/health | jq          # peers should be ≥ 1 within ~30s
+```
 
-# 2. Create an API key (public for the take-home; see architecture.md §4).
+**2. Create an API key** (public for the take-home; see architecture.md §4)
+```bash
 KEY=$(curl -s -X POST :3000/v1/api-keys \
   -H 'Content-Type: application/json' \
   -d '{"name":"smoke"}' | jq -r .plaintext)
+```
 
-# 3. Dispatch a non-streaming inference.
+**3. Dispatch a non-streaming inference**
+```bash
 curl -s -X POST :3000/v1/chat/completions \
   -H "Authorization: Bearer $KEY" \
   -H 'Content-Type: application/json' \
   -d '{"model":"mock-llm","messages":[{"role":"user","content":"hi"}]}' | jq
 ```
 
-Expected output: an OpenAI-shaped `chat.completion` with synthetic text,
-`finish_reason: "length"`, and non-zero `usage.total_tokens`.
+Expected output: an OpenAI-shaped `chat.completion` with synthetic text, `finish_reason: "length"`, and non-zero `usage.total_tokens`.
+
+---
 
 ## Available Scripts
 
@@ -130,24 +181,34 @@ pnpm compose:down   # docker compose down -v
 pnpm clean          # remove dist + node_modules
 ```
 
+---
+
 ## Status
 
-CI runs lint → typecheck → test → build → format check on every push to `main` and every PR (`.github/workflows/ci.yml`). Add the GitHub Actions badge to this section once the workflow has run once.
+CI runs lint → typecheck → test → build → format check on every push to `main` and every PR (`.github/workflows/ci.yml`).
+
+---
 
 ## Why no Turborepo / Nx?
 
 We deliberately use plain **pnpm workspaces** without a higher-level orchestrator. The dependency graph is shallow (`@cosmic/shared` → backend / worker / frontend) and only four packages exist, so `pnpm -r --parallel --filter` already gives us parallel execution and per-package targeting. Adding Turbo/Nx would buy build caching at the cost of one more concept to explain in the demo video. Trivial to introduce later — see `docs/architecture.md` for the trade-off discussion.
 
+---
+
 ## Environment Variables
 
 See [`.env.example`](./.env.example) for the full list.
 
+---
+
 ## Documentation
 
-- [`CLAUDE.md`](./CLAUDE.md) — AI assistant brief (read this first).
-- [`docs/architecture.md`](./docs/architecture.md) — design, trade-offs, scaling, future work.
-- [`http://localhost:3000/docs`](http://localhost:3000/docs) — generated OpenAPI spec (when backend is running).
-- [`.cursor/rules/`](./.cursor/rules) — coding/architecture/testing rules used by the AI assistant.
+- **[CLAUDE.md](./CLAUDE.md)** — AI assistant brief (read this first).
+- **[Architecture](./docs/architecture.md)** — design, trade-offs, scaling, future work.
+- **[OpenAPI Spec](http://localhost:3000/docs)** — generated OpenAPI spec (when backend is running).
+- **[AI Rules](./.cursor/rules)** — coding/architecture/testing rules used by the AI assistant.
+
+---
 
 ## License
 
