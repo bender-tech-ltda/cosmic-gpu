@@ -18,77 +18,79 @@ This file tracks the **40 requirements** extracted from the task brief and the j
 
 ## Functional Requirements (FR)
 
-| ID    | Requirement                                |  S1 |  S2 |  S3 | S4a |  S4b |   CP |   S5 | Notes                                                                    |
-| ----- | ------------------------------------------ | --: | --: | --: | --: | ---: | ---: | ---: | ------------------------------------------------------------------------ |
-| FR-01 | Backend manages API keys (CRUD)            |  0% | 10% | 10% | 25% | 100% | 100% | 100% | Audit events emitted on create + revoke                                  |
-| FR-02 | Backend handles inference requests         |  0% | 10% | 10% | 10% |  10% |  10% |  40% | Worker exposes `inference.run` over Hyperswarm RPC; backend wires Step 6 |
-| FR-03 | Backend simulates workload distribution    |  0% |  0% |  0% | 10% |  10% |  10% |  35% | Worker process joins swarm with stable keypair; mock-LLM in place        |
-| FR-04 | P2P / distributed task queue               |  0% |  5% |  5% | 15% |  15% |  20% |  40% | Worker swarm join + RPC server live; queue logic comes with dispatcher   |
-| FR-05 | Frontend — API key management UI           |  0% |  5% |  5% |  5% |  10% |  10% |  10% | Backend endpoints ready to consume                                       |
-| FR-06 | Frontend — usage monitoring UI             |  0% |  5% |  5% |  5% |   5% |   5% |   5% | Usage DTO defined                                                        |
-| FR-07 | Frontend — basic model deployment workflow |  0% |  5% |  5% |  5% |   5% |   5% |   5% | Model DTO defined                                                        |
-| FR-08 | OpenAI-compatible streaming endpoint       |  0% | 15% | 15% | 15% |  15% |  20% |  35% | `streamInference` handler unit-tested end-to-end; Protomux wiring Step 7 |
-| FR-09 | OpenAI-compatible non-streaming endpoint   |  0% | 15% | 15% | 15% |  20% |  20% |  40% | Worker side complete; backend route lands Step 6                         |
-| FR-10 | Usage tracking                             |  0% |  5% |  5% | 25% |  25% |  25% |  25% | UsageState accessor + windows logic                                      |
-| FR-11 | Rate limiting                              |  0% |  5% |  5% |  5% | 100% |  90% |  90% | Behaviour at 100%; trade-off documented in `docs/architecture.md`        |
-| FR-12 | Metrics dashboard                          |  0% |  0% |  0% |  0% |   0% |   0% |   0% | —                                                                        |
-| FR-13 | Health check endpoint                      |  0% | 10% | 75% | 75% |  80% |  80% |  85% | `worker.health` snapshot + codec round-trip                              |
+| ID    | Requirement                                |  S1 |  S2 |  S3 | S4a |  S4b |   CP |   S5 |   S6 | S6.5 | Notes                                                                    |
+| ----- | ------------------------------------------ | --: | --: | --: | --: | ---: | ---: | ---: | ---: | ---: | ------------------------------------------------------------------------ |
+| FR-01 | Backend manages API keys (CRUD)            |  0% | 10% | 10% | 25% | 100% | 100% | 100% | 100% | 100% | Audit events emitted on create + revoke                                  |
+| FR-02 | Backend handles inference requests         |  0% | 10% | 10% | 10% |  10% |  10% |  40% |  85% |  85% | Backend dispatches via least-in-flight + 1 retry; lifecycle in JobsState |
+| FR-03 | Backend simulates workload distribution    |  0% |  0% |  0% | 10% |  10% |  10% |  35% |  75% |  75% | Worker registry + dispatcher selection; usage counters per request       |
+| FR-04 | P2P / distributed task queue               |  0% |  5% |  5% | 15% |  15% |  20% |  40% |  80% |  85% | End-to-end pending→dispatched→running→complete│failed lifecycle          |
+| FR-05 | Frontend — API key management UI           |  0% |  5% |  5% |  5% |  10% |  10% |  10% |  10% |  10% | Backend endpoints ready to consume                                       |
+| FR-06 | Frontend — usage monitoring UI             |  0% |  5% |  5% |  5% |   5% |   5% |   5% |   5% |   5% | Usage DTO defined                                                        |
+| FR-07 | Frontend — basic model deployment workflow |  0% |  5% |  5% |  5% |   5% |   5% |   5% |   5% |   5% | Model DTO defined                                                        |
+| FR-08 | OpenAI-compatible streaming endpoint       |  0% | 15% | 15% | 15% |  15% |  20% |  35% |  35% |  35% | `streamInference` handler unit-tested end-to-end; Protomux wiring Step 7 |
+| FR-09 | OpenAI-compatible non-streaming endpoint   |  0% | 15% | 15% | 15% |  20% |  20% |  40% |  90% |  90% | `POST /v1/chat/completions` live; OpenAI-shaped response                 |
+| FR-10 | Usage tracking                             |  0% |  5% |  5% | 25% |  25% |  25% |  25% |  55% |  55% | Per-key counter increments on every successful chat completion           |
+| FR-11 | Rate limiting                              |  0% |  5% |  5% |  5% | 100% |  90% |  90% |  90% |  90% | Behaviour at 100%; trade-off documented in `docs/architecture.md`        |
+| FR-12 | Metrics dashboard                          |  0% |  0% |  0% |  0% |   0% |   0% |   0% |   0% |   0% | Step 8                                                                   |
+| FR-13 | Health check endpoint                      |  0% | 10% | 75% | 75% |  80% |  80% |  85% |  95% |  95% | Live peer count from `app.p2p.registry.size()`                           |
 
 ## Tech Stack Adherence (TS)
 
-| ID    | Requirement                    |  S1 |  S2 |  S3 | S4a | S4b |  CP |  S5 | Notes                                                     |
-| ----- | ------------------------------ | --: | --: | --: | --: | --: | --: | --: | --------------------------------------------------------- |
-| TS-01 | Node.js + Fastify backend      | 25% | 40% | 65% | 65% | 80% | 85% | 85% | No backend changes in S5                                  |
-| TS-02 | Hyperswarm RPC / Hyperswarm    | 25% | 40% | 40% | 40% | 40% | 50% | 75% | Worker joins Hyperswarm + answers `@hyperswarm/rpc` calls |
-| TS-03 | HyperDB (or similar K/V store) | 25% | 35% | 35% | 65% | 70% | 75% | 75% | Unchanged                                                 |
+| ID    | Requirement                    |  S1 |  S2 |  S3 | S4a | S4b |  CP |  S5 |  S6 | S6.5 | Notes                                                                 |
+| ----- | ------------------------------ | --: | --: | --: | --: | --: | --: | --: | --: | ---: | --------------------------------------------------------------------- |
+| TS-01 | Node.js + Fastify backend      | 25% | 40% | 65% | 65% | 80% | 85% | 85% | 90% |  90% | `chat-completions` route + `p2p` plugin complete the backend slice    |
+| TS-02 | Hyperswarm RPC / Hyperswarm    | 25% | 40% | 40% | 40% | 40% | 50% | 75% | 90% |  92% | Backend dispatches via `@hyperswarm/rpc`; local DHT profile available |
+| TS-03 | HyperDB (or similar K/V store) | 25% | 35% | 35% | 65% | 70% | 75% | 75% | 80% |  80% | JobsState lifecycle + WorkersState now exercised end-to-end           |
 
 ## Non-Functional / Best Practices (NFR)
 
-| ID     | Requirement                     |  S1 |  S2 |  S3 | S4a | S4b |  CP |  S5 | Notes                                                                |
-| ------ | ------------------------------- | --: | --: | --: | --: | --: | --: | --: | -------------------------------------------------------------------- |
-| NFR-01 | Clean modular architecture      | 50% | 60% | 70% | 80% | 85% | 88% | 90% | Worker split into config / runtime / handlers / simulator modules    |
-| NFR-02 | Proper error handling           |  0% | 15% | 50% | 50% | 70% | 70% | 75% | Worker translates RPC failures into `inference.failed` audit events  |
-| NFR-03 | Input validation                |  0% | 25% | 40% | 40% | 60% | 60% | 70% | RPC payloads validated by Compact Encoding decoders                  |
-| NFR-04 | Env-var configuration           | 50% | 50% | 75% | 80% | 80% | 90% | 95% | Worker now has its own typed `WorkerConfig` loader                   |
-| NFR-05 | Async patterns / resource mgmt  |  0% |  0% | 30% | 40% | 45% | 45% | 70% | Async generators + AbortSignal cancel; SIGINT/SIGTERM teardown order |
-| NFR-06 | Frontend responsive             |  0% |  0% |  0% |  0% |  0% |  0% |  0% | —                                                                    |
-| NFR-07 | Frontend state management       |  0% |  0% |  0% |  0% |  0% |  0% |  0% | —                                                                    |
-| NFR-08 | Frontend real-time updates      |  0% |  0% |  0% |  0% |  0% |  0% |  0% | —                                                                    |
-| NFR-09 | Frontend loading / error states |  0% |  0% |  0% |  0% |  0% |  0% |  0% | —                                                                    |
-| NFR-10 | Local distributed simulation    |  0% |  0% |  0% |  0% |  0% | 50% | 65% | Worker container has a real entrypoint; Compose can boot the swarm   |
-| NFR-11 | Documented scaling approach     |  0% |  0% |  0% |  0% |  5% | 60% | 60% | Unchanged                                                            |
-| NFR-12 | Failure scenarios + resilience  |  0% |  5% |  5% | 15% | 25% | 35% | 50% | AbortSignal-aware mock LLM; in-flight discipline; cancellation tests |
-| NFR-13 | TypeScript / type safety        | 75% | 90% | 90% | 95% | 95% | 95% | 95% | Typed Hyperswarm/RPC ambient declarations carry the runtime layer    |
-| NFR-14 | Logging / observability         |  0% |  0% | 40% | 45% | 50% | 70% | 80% | Worker Pino with redact + `worker.joined`/`worker.left` audit events |
+| ID     | Requirement                     |  S1 |  S2 |  S3 | S4a | S4b |  CP |  S5 |  S6 | S6.5 | Notes                                                                 |
+| ------ | ------------------------------- | --: | --: | --: | --: | --: | --: | --: | --: | ---: | --------------------------------------------------------------------- |
+| NFR-01 | Clean modular architecture      | 50% | 60% | 70% | 80% | 85% | 88% | 90% | 92% |  92% | Backend gains a dedicated `p2p/` module with isolated dispatcher unit |
+| NFR-02 | Proper error handling           |  0% | 15% | 50% | 50% | 70% | 70% | 75% | 85% |  85% | Dispatcher emits `noWorkersAvailable` / `workerTimeout` envelopes     |
+| NFR-03 | Input validation                |  0% | 25% | 40% | 40% | 60% | 60% | 70% | 80% |  80% | `ChatCompletionRequest` validated via TypeBox; `stream:true` rejected |
+| NFR-04 | Env-var configuration           | 50% | 50% | 75% | 80% | 80% | 90% | 95% | 95% |  95% | Unchanged                                                             |
+| NFR-05 | Async patterns / resource mgmt  |  0% |  0% | 30% | 40% | 45% | 45% | 70% | 80% |  80% | Dispatcher in-flight discipline + JobsState transitions on every path |
+| NFR-06 | Frontend responsive             |  0% |  0% |  0% |  0% |  0% |  0% |  0% |  0% |   0% | —                                                                     |
+| NFR-07 | Frontend state management       |  0% |  0% |  0% |  0% |  0% |  0% |  0% |  0% |   0% | —                                                                     |
+| NFR-08 | Frontend real-time updates      |  0% |  0% |  0% |  0% |  0% |  0% |  0% |  0% |   0% | —                                                                     |
+| NFR-09 | Frontend loading / error states |  0% |  0% |  0% |  0% |  0% |  0% |  0% |  0% |   0% | —                                                                     |
+| NFR-10 | Local distributed simulation    |  0% |  0% |  0% |  0% |  0% | 50% | 65% | 75% |  90% | Compose has a `p2p-local` profile + DHT bootstrap container           |
+| NFR-11 | Documented scaling approach     |  0% |  0% |  0% |  0% |  5% | 60% | 60% | 65% |  70% | Architecture doc §4.1 covers the local Compose split                  |
+| NFR-12 | Failure scenarios + resilience  |  0% |  5% |  5% | 15% | 25% | 35% | 50% | 70% |  70% | One-attempt re-dispatch + 503 envelopes covered by tests              |
+| NFR-13 | TypeScript / type safety        | 75% | 90% | 90% | 95% | 95% | 95% | 95% | 95% |  95% | Unchanged                                                             |
+| NFR-14 | Logging / observability         |  0% |  0% | 40% | 45% | 50% | 70% | 80% | 85% |  85% | `inference.dispatched` / `completed` / `failed` audit events emitted  |
 
 ## Deliverables (DEL)
 
-| ID     | Requirement                                |   S1 |   S2 |   S3 |  S4a |  S4b |   CP |   S5 | Notes                                                  |
-| ------ | ------------------------------------------ | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ------------------------------------------------------ |
-| DEL-01 | GitHub repo + README + setup               |  50% |  50% |  50% |  50% |  50% |  50% |  50% | README refresh queued as Step 5.5                      |
-| DEL-02 | Live demo URL (bonus)                      |   0% |   0% |   0% |   0% |   0% |   0% |   0% | —                                                      |
-| DEL-03 | OpenAPI spec                               |   0% |  15% |  50% |  50% |  65% |  65% |  65% | Unchanged                                              |
-| DEL-04 | Architecture document                      |   0% |   0% |   0% |   0% |   0% |  75% |  78% | Worker runtime + transport split now reflected in code |
-| DEL-05 | Demo video (≤5 min)                        |   0% |   0% |   0% |   0% |   0% |   0% |   0% | —                                                      |
-| DEL-06 | Folder structure (backend/frontend/shared) | 100% | 100% | 100% | 100% | 100% | 100% | 100% | ✅ Done                                                |
-| DEL-07 | Docker Compose setup                       |   0% |   0% |   0% |   0% |   0% |  60% |  70% | Worker image now has a real entrypoint                 |
-| DEL-08 | `.env.example`                             | 100% | 100% | 100% | 100% | 100% | 100% | 100% | ✅ Done; WORKER*\* + MOCK_LLM*\* added                 |
-| DEL-09 | Basic test coverage                        |  25% |  35% |  45% |  55% |  70% |  80% |  85% | 114 tests across shared + backend + worker             |
-| DEL-10 | CI/CD pipeline                             |   0% |   0% |   0% |   0% |   0% |  75% |  75% | Unchanged                                              |
+| ID     | Requirement                                |   S1 |   S2 |   S3 |  S4a |  S4b |   CP |   S5 |   S6 | S6.5 | Notes                                                           |
+| ------ | ------------------------------------------ | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --------------------------------------------------------------- |
+| DEL-01 | GitHub repo + README + setup               |  50% |  50% |  50% |  50% |  50% |  50% |  50% |  50% |  65% | Smoke run + p2p-local profile documented                        |
+| DEL-02 | Live demo URL (bonus)                      |   0% |   0% |   0% |   0% |   0% |   0% |   0% |   0% |   0% | —                                                               |
+| DEL-03 | OpenAPI spec                               |   0% |  15% |  50% |  50% |  65% |  65% |  65% |  78% |  78% | `/v1/chat/completions` documented; Bearer security on inference |
+| DEL-04 | Architecture document                      |   0% |   0% |   0% |   0% |   0% |  75% |  78% |  82% |  85% | New §4.1 documents the Compose `p2p-local` profile              |
+| DEL-05 | Demo video (≤5 min)                        |   0% |   0% |   0% |   0% |   0% |   0% |   0% |   0% |   0% | —                                                               |
+| DEL-06 | Folder structure (backend/frontend/shared) | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | ✅ Done                                                         |
+| DEL-07 | Docker Compose setup                       |   0% |   0% |   0% |   0% |   0% |  60% |  70% |  80% |  95% | `p2p-local` profile + DHT bootstrap container                   |
+| DEL-08 | `.env.example`                             | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | 100% | ✅ Done                                                         |
+| DEL-09 | Basic test coverage                        |  25% |  35% |  45% |  55% |  70% |  80% |  85% |  90% |  90% | 131 tests across shared + backend + worker (+17 in S6)          |
+| DEL-10 | CI/CD pipeline                             |   0% |   0% |   0% |   0% |   0% |  75% |  75% |  75% |  90% | New `docker:build` matrix job validates both images             |
 
 ---
 
 ## Aggregate Progress
 
-| Bucket                              |       S1 |       S2 |       S3 |      S4a |      S4b |       CP |       S5 |
-| ----------------------------------- | -------: | -------: | -------: | -------: | -------: | -------: | -------: |
-| Functional Requirements (FR, 13)    |       0% |      ~8% |     ~13% |     ~16% |     ~30% |     ~31% |     ~38% |
-| Tech Stack (TS, 3)                  |      25% |     ~38% |     ~47% |     ~57% |     ~63% |     ~70% |     ~78% |
-| Non-Functional (NFR, 14)            |     ~14% |     ~18% |     ~30% |     ~36% |     ~42% |     ~48% |     ~54% |
-| Deliverables (DEL, 10)              |   ~32.5% |     ~35% |   ~39.5% |   ~40.5% |     ~45% |     ~61% |     ~62% |
-| **Overall (40 items, simple mean)** | **~13%** | **~18%** | **~25%** | **~30%** | **~40%** | **~46%** | **~52%** |
+| Bucket                              |       S1 |       S2 |       S3 |      S4a |      S4b |       CP |       S5 |       S6 |     S6.5 |
+| ----------------------------------- | -------: | -------: | -------: | -------: | -------: | -------: | -------: | -------: | -------: |
+| Functional Requirements (FR, 13)    |       0% |      ~8% |     ~13% |     ~16% |     ~30% |     ~31% |     ~38% |     ~50% |     ~51% |
+| Tech Stack (TS, 3)                  |      25% |     ~38% |     ~47% |     ~57% |     ~63% |     ~70% |     ~78% |     ~87% |     ~89% |
+| Non-Functional (NFR, 14)            |     ~14% |     ~18% |     ~30% |     ~36% |     ~42% |     ~48% |     ~54% |     ~59% |     ~60% |
+| Deliverables (DEL, 10)              |   ~32.5% |     ~35% |   ~39.5% |   ~40.5% |     ~45% |     ~61% |     ~62% |     ~67% |     ~73% |
+| **Overall (40 items, simple mean)** | **~13%** | **~18%** | **~25%** | **~30%** | **~40%** | **~46%** | **~52%** | **~60%** | **~62%** |
 
-> **CP = Pre-Step-5 Correction Pass.** Combined the Cursor + Warp + verdict suggestions into one pass: seed-derived ed25519 identity (real keypair), `docs/architecture.md`, GitHub Actions CI, Docker Compose with 1 backend + 3 workers, Pino redaction + explicit bodyLimit + audit-event helper, `BACKEND_BODY_LIMIT_BYTES` and `P2P_BOOTSTRAP` env, dropped unused `hyperdb`, Compact Encoding edge tests, locked the streaming transport choice in `.cursor/rules/p2p-architecture.mdc` and `docs/architecture.md`.
+> **CP = Pre-Step-5 Correction Pass.** Combined the Cursor + Warp + verdict suggestions into one pass.
+> **S6 = Backend dispatcher + non-streaming inference.** Backend joins Hyperswarm, registry polls `worker.health`, dispatcher selects via least-in-flight + 1 retry, `POST /v1/chat/completions` is live.
+> **S6.5 = Smoke Compose + CI.** Opt-in `p2p-local` profile with a HyperDHT bootstrap container, README smoke run section, CI `docker:build` matrix.
 
 ## Deliberate trade-offs
 
@@ -187,10 +189,31 @@ Merged correction pass driven by [`.cursor/plans/llm-verdict-evaluation.md`](../
 - **Ambient types** (`apps/worker/src/types/hyperdht.d.ts`): narrow declarations for `hyperdht`, `hyperswarm`, and `@hyperswarm/rpc` covering only the surface this app touches.
 - **Tests**: 22 new (6 identity, 7 mock-llm, 6 inference + streaming, 3 health). Total now **114 / 114** (was 92).
 
-### Step 5.5 — README refresh (next)
+### Step 5.5 — README refresh
 
-_Pending._ Refresh `README.md`, `apps/backend/README.md`, and `apps/worker/README.md` to reflect Hyperbee (not HyperDB), the actual `/v1/api-keys` endpoints (publicly accessible per take-home trade-off), the streaming transport split, and the new worker runtime layout.
+- Root `README.md`, `apps/backend/README.md`, and `apps/worker/README.md` brought back in sync with Steps 4a/4b/CP/5: Hyperbee instead of HyperDB; the actual `/v1/api-keys` endpoints (publicly accessible per take-home trade-off); the Hyperswarm RPC vs Protomux streaming transport split; the new worker runtime layout (`config/`, `runtime/`, `simulator/`, `observability/`, `types/`).
 
 ### Step 6 — Backend dispatcher + non-streaming inference
+
+- **Schema evolution.** Appended optional `text?: string` to `InferenceResponseFinal` (append-only policy preserved). Worker handler populates it from the mock LLM. Two new round-trip tests in `packages/shared`.
+- **Backend P2P module** (`apps/backend/src/p2p/`):
+  - `swarm.ts` joins the Hyperswarm topic with the persisted backend keypair, honouring `P2P_BOOTSTRAP`.
+  - `rpc-client.ts` wraps `@hyperswarm/rpc` behind a small `RpcClient` interface so the dispatcher is unit-testable with a stub.
+  - `registry.ts` listens on `swarm.on('connection')`, polls `worker.health` per peer, soft-removes after 3 consecutive failed polls, upserts records in `WorkersState`.
+  - `dispatcher.ts` selects via least-in-flight (combined `inFlight + localPending`, stable random tiebreak), records `pending→dispatched→running→complete│failed` in `JobsState`, re-dispatches **once** on RPC failure, throws `503 noWorkersAvailable` / `503 workerTimeout` via `DomainError`, emits `inference.dispatched / completed / failed` audit events.
+  - `index.ts` orchestrates the pieces and exposes a single `close()`.
+- **Plugin + route**: `plugins/p2p.plugin.ts` decorates `app.p2p`. `routes/chat-completions.route.ts` exposes `POST /v1/chat/completions` (auth required, TypeBox-validated body, `stream:true` returns 400 ValidationFailed until Step 7), maps the worker's `InferenceResponseFinal` to OpenAI's `ChatCompletion`, and increments per-key `UsageState` counters per success.
+- **Updated routes**: `/health` reads live peer count via `app.p2p?.registry.size()`. `/v1/models` projects `WorkerRecord.modelId`s when the registry has workers; falls back to `mock-llm` otherwise.
+- **Wiring**: `app.ts` registers `p2pPlugin` after auth + rate-limit (skipped in tests via `NODE_ENV !== 'test'` so the test harness can stub `app.p2p`). Backend now declares `hyperswarm`, `protomux`, `b4a` as direct deps; ambient declarations extended.
+- **Tests**: 6 dispatcher + 3 registry + 6 chat-completions route tests (`app.inject` with stubbed dispatcher: 401/401/400/503/503/200). Total now **131 / 131** (was 114).
+
+### Step 6.5 — Smoke Compose + CI
+
+- **Compose `p2p-local` profile** in `docker-compose.yml` adds a `dht` container (running `hyperdht --node` on port 49737) and defaults `P2P_BOOTSTRAP=dht:49737` for backend + workers. Default `compose up` still uses the public Holepunch DHT.
+- **CI matrix**: new `docker:build` job in `.github/workflows/ci.yml` runs `docker buildx build` against both `docker/backend.Dockerfile` and `docker/worker.Dockerfile` after the lint/typecheck/test/build job succeeds. `gha` cache scoped per image keeps the second run fast.
+- **README**: new "Smoke run" subsection under "Quick Start (Docker Compose)" with the `curl` recipe (create key → dispatch chat completion).
+- **Architecture doc**: new §4.1 explaining the two ways to bring up the swarm (public DHT vs `p2p-local`).
+
+### Step 7 — Streaming SSE inference (next)
 
 _Pending._

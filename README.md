@@ -79,7 +79,40 @@ pnpm compose:up         # docker compose up --build
 pnpm compose:down       # docker compose down -v
 ```
 
-If the public Holepunch DHT is unreachable from your network, set `P2P_BOOTSTRAP=host:port[,...]` in `.env` to point at a local DHT bootstrap.
+If the public Holepunch DHT is unreachable from your network, opt into the
+self-contained `p2p-local` profile to spin up an in-Compose HyperDHT bootstrap
+node alongside the backend and workers:
+
+```bash
+docker compose --profile p2p-local up --build
+```
+
+The profile sets `P2P_BOOTSTRAP=dht:49737` for both backend and workers. You
+can also point at any external bootstrap by setting `P2P_BOOTSTRAP=host:port[,...]`
+in `.env`.
+
+### Smoke run
+
+With Compose up, exercise the full pipeline end-to-end:
+
+```bash
+# 1. Confirm the swarm formed.
+curl -s :3000/health | jq          # peers should be ≥ 1 within ~30s
+
+# 2. Create an API key (public for the take-home; see architecture.md §4).
+KEY=$(curl -s -X POST :3000/v1/api-keys \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"smoke"}' | jq -r .plaintext)
+
+# 3. Dispatch a non-streaming inference.
+curl -s -X POST :3000/v1/chat/completions \
+  -H "Authorization: Bearer $KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"mock-llm","messages":[{"role":"user","content":"hi"}]}' | jq
+```
+
+Expected output: an OpenAI-shaped `chat.completion` with synthetic text,
+`finish_reason: "length"`, and non-zero `usage.total_tokens`.
 
 ## Available Scripts
 

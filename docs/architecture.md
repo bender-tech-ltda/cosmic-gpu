@@ -90,6 +90,15 @@ These are intentional choices that differ from the original implementation plan 
 - **Mark & Sweep GC, Fork-ID truncate handling, and signed RPC results are deferred.** All three are captured in `.cursor/rules/p2p-architecture.mdc` and §6 below. We never call `core.truncate`, so Fork-ID drift cannot occur in the MVP by construction.
 - **Study guide note: "encrypted with private key, decrypted with public key".** That phrasing in the study guide describes a digital signature, not encryption. Hyperswarm sessions use **Noise** (an asymmetric handshake that derives symmetric session keys); confidentiality is symmetric, authenticity is asymmetric. Calling this out so reviewers don't think we adopted a wrong mental model.
 
+## 4.1 Local Compose details
+
+`docker-compose.yml` ships with two ways to bring up the swarm:
+
+- **Default (public DHT).** `docker compose up --build` boots 1 backend + 3 workers and lets them discover each other through the public Holepunch DHT bootstrap nodes. This is the closest to a real deployment.
+- **`p2p-local` profile (self-contained).** `docker compose --profile p2p-local up --build` adds a `dht` service that runs `hyperdht --node` on port 49737 and sets `P2P_BOOTSTRAP=dht:49737` for the backend and workers. Useful for offline demos, CI, or networks that block the public DHT.
+
+Named volumes (`backend-data`, `worker[1-3]-data`) persist Hyperbee/Hypercore state and node-identity seeds across container restarts so worker pubkeys stay stable.
+
 ## 5. Scaling
 
 The current design is single-region and single-backend-replica. To scale:
