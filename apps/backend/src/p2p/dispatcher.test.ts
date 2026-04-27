@@ -265,3 +265,158 @@ describe('InferenceDispatcher', () => {
     });
   });
 });
+
+import type { StreamTransport } from './stream-transport.js';
+
+function makeStreamTransport(
+  handler: (workerPubKey: string, request: InferenceRequest) => AsyncIterable<InferenceResponse>,
+): { transport: StreamTransport; lastSignal: { value: AbortSignal | undefined } } {
+  const lastSignal = { value: undefined as AbortSignal | undefined };
+  return {
+    lastSignal,
+    transport: {
+      openStream(workerPubKey, request, signal) {
+        lastSignal.value = signal;
+        return handler(workerPubKey.toString('hex'), request);
+      },
+      async close() {},
+    },
+  };
+}
+
+describe('InferenceDispatcher.dispatchStream', () => {
+  it('emits chunks then a final and writes lifecycle transitions', async () => {
+    const { workers, jobs } = await bootstrap();
+    await workers.upsert(workerRecord(PUB_HEX_A, 0));
+    const { transport } = makeStreamTransport(async function* (_pub, req) {
+      yield { kind: 'chunk', jobId: req.jobId, delta: 'hi ' };
+      yield { kind: 'chunk', jobId: req.jobId, delta: 'there' };
+      yield {
+        kind: 'final',
+        jobId: req.jobId,
+        finishReason: 'stop',
+        promptTokens: 1,
+        completionTokens: 2,
+        workerPubKey: PUB_HEX_A,
+        text: 'hi there',
+      };
+    });
+    const { log, info } = fakeLogger();
+    const dispatcher = new InferenceDispatcher({
+      rpcClient: makeRpcStub(async () => {
+        throw new Error('rpc not used in streaming path');
+      }).client,
+      streamTransport: transport,
+      workersState: workers,
+      jobsState: jobs,
+      log,
+    });
+
+    const out: InferenceResponse[] = [];
+    for await (const frame of dispatcher.dispatchStream(fixtureRequest(), 'ak_test')) {
+      out.push(frame);
+    }
+    expect(out.filter((f) => f.kind === 'chunk')).toHaveLength(2);
+    const last = out[out.length - 1];
+    expect(last?.kind).toBe('final');
+
+    const final: Array<{ status: string; tokensIn: number | null }> = [];
+    for await (const j of jobs.list()) final.push(j);
+    expect(final[0]?.status).toBe('complete');
+    expect(final[0]?.tokensIn).toBe(1);
+
+    const events = info.mock.calls.map(([fields]) => (fields as { event?: string }).event);
+    expect(events).toContain('inference.dispatched');
+    expect(events).toContain('inference.completed');
+  });
+
+  it('throws noWorkersAvailable on empty registry', async () => {
+    const { workers, jobs } = await bootstrap();
+    const { transport } = makeStreamTransport(async function* () {
+      yield { kind: 'chunk', jobId: 'j', delta: '' };
+    });
+    const { log } = fakeLogger();
+    const dispatcher = new InferenceDispatcher({
+      rpcClient: makeRpcStub(async () => ({}) as never).client,
+      streamTransport: transport,
+      workersState: workers,
+      jobsState: jobs,
+      log,
+    });
+
+    let captured: unknown;
+    try {
+      for await (const _ of dispatcher.dispatchStream(fixtureRequest(), 'ak_test')) {
+        // never yields
+      }
+    } catch (err) {
+      captured = err;
+    }
+    expect((captured as { code?: string })?.code).toBe(ERROR_CODE.noWorkersAvailable);
+  });
+
+  it('throws workerTimeout when the stream ends without a final envelope', async () => {
+    const { workers, jobs } = await bootstrap();
+    await workers.upsert(workerRecord(PUB_HEX_A, 0));
+    const { transport } = makeStreamTransport(async function* (_pub, req) {
+      yield { kind: 'chunk', jobId: req.jobId, delta: 'partial' };
+      // generator ends without a final
+    });
+    const { log, info } = fakeLogger();
+    const dispatcher = new InferenceDispatcher({
+      rpcClient: makeRpcStub(async () => ({}) as never).client,
+      streamTransport: transport,
+      workersState: workers,
+      jobsState: jobs,
+      log,
+    });
+
+    const out: InferenceResponse[] = [];
+    let captured: unknown;
+    try {
+      for await (const frame of dispatcher.dispatchStream(fixtureRequest(), 'ak_test')) {
+        out.push(frame);
+      }
+    } catch (err) {
+      captured = err;
+    }
+    expect(out).toHaveLength(1);
+    expect((captured as { code?: string })?.code).toBe(ERROR_CODE.workerTimeout);
+
+    const final: Array<{ status: string }> = [];
+    for await (const j of jobs.list()) final.push(j);
+    expect(final[0]?.status).toBe('failed');
+
+    const events = info.mock.calls.map(([fields]) => (fields as { event?: string }).event);
+    expect(events).toContain('inference.failed');
+  });
+
+  it('passes the AbortSignal through to the transport', async () => {
+    const { workers, jobs } = await bootstrap();
+    await workers.upsert(workerRecord(PUB_HEX_A, 0));
+    const { transport, lastSignal } = makeStreamTransport(async function* (_pub, req) {
+      yield {
+        kind: 'final',
+        jobId: req.jobId,
+        finishReason: 'stop',
+        promptTokens: 0,
+        completionTokens: 0,
+        workerPubKey: PUB_HEX_A,
+        text: '',
+      };
+    });
+    const { log } = fakeLogger();
+    const dispatcher = new InferenceDispatcher({
+      rpcClient: makeRpcStub(async () => ({}) as never).client,
+      streamTransport: transport,
+      workersState: workers,
+      jobsState: jobs,
+      log,
+    });
+    const ctrl = new AbortController();
+    for await (const _ of dispatcher.dispatchStream(fixtureRequest(), 'ak_test', ctrl.signal)) {
+      /* drain */
+    }
+    expect(lastSignal.value).toBe(ctrl.signal);
+  });
+});

@@ -26,9 +26,15 @@ import { AUDIT_EVENT, logEvent, type AuditLogger } from '../observability/audit.
 import type { JobsState, JobRecord } from '../state/jobs.state.js';
 import type { WorkerRecord, WorkersState } from '../state/workers.state.js';
 import type { RpcClient } from './rpc-client.js';
+import type { StreamTransport } from './stream-transport.js';
 
 export interface DispatcherDeps {
   rpcClient: RpcClient;
+  /**
+   * Streaming transport. Optional so non-streaming-only environments and
+   * tests can omit it; the streaming path throws if it isn't provided.
+   */
+  streamTransport?: StreamTransport;
   workersState: WorkersState;
   jobsState: JobsState;
   log: AuditLogger;
@@ -145,6 +151,119 @@ export class InferenceDispatcher {
         lastError !== undefined
           ? { cause: lastError instanceof Error ? lastError.message : String(lastError) }
           : undefined,
+    });
+  }
+
+  /**
+   * Streaming variant of `dispatch`. Single-attempt selection (no retry,
+   * because the architecture doc commits to surfacing mid-stream worker
+   * failure to the client rather than reconnecting silently). Yields each
+   * worker frame in order; the consumer (the chat-completions route) maps
+   * `chunk` frames to `ChatCompletionChunk`s and the trailing `final` frame
+   * to the SSE `[DONE]` terminator. Cancellation is wired through `signal`.
+   */
+  async *dispatchStream(
+    request: ChatCompletionRequest,
+    apiKeyId: string,
+    signal?: AbortSignal,
+  ): AsyncGenerator<InferenceResponse, void, void> {
+    if (!this.deps.streamTransport) {
+      throw new DomainError({
+        statusCode: 501,
+        code: ERROR_CODE.internalError,
+        message: 'Streaming transport is not configured.',
+      });
+    }
+    const transport = this.deps.streamTransport;
+
+    const jobId = generateJobId();
+    const createdAtIso = new Date(this.now()).toISOString();
+    await this.deps.jobsState.create({
+      id: jobId,
+      apiKeyId,
+      workerPubKey: null,
+      status: 'pending',
+      createdAt: createdAtIso,
+      updatedAt: createdAtIso,
+      tokensIn: null,
+      tokensOut: null,
+    });
+
+    const worker = await this.selectWorker(new Set());
+    if (!worker) {
+      await this.markFailed(jobId);
+      throw new DomainError({
+        statusCode: 503,
+        code: ERROR_CODE.noWorkersAvailable,
+        message: 'No workers are currently available to serve the request.',
+      });
+    }
+
+    this.incrementPending(worker.pubKey);
+    let final: InferenceResponseFinal | null = null;
+    let crashed: unknown;
+    try {
+      await this.deps.jobsState.transition(jobId, {
+        status: 'dispatched',
+        workerPubKey: worker.pubKey,
+      });
+      logEvent(this.deps.log, AUDIT_EVENT.inferenceDispatched, {
+        jobId,
+        apiKeyId,
+        workerPubKey: worker.pubKey,
+        attempt: 0,
+        streaming: true,
+      });
+      await this.deps.jobsState.transition(jobId, { status: 'running' });
+
+      const wireRequest = buildInferenceRequest(request, apiKeyId, jobId);
+      const stream = transport.openStream(Buffer.from(worker.pubKey, 'hex'), wireRequest, signal);
+
+      for await (const frame of stream) {
+        if (frame.kind === 'final') final = frame;
+        yield frame;
+        if (frame.kind === 'final') break;
+      }
+
+      if (!final) {
+        crashed = new Error('worker stream ended without a final envelope');
+      }
+    } catch (err) {
+      crashed = err;
+    } finally {
+      this.decrementPending(worker.pubKey);
+    }
+
+    if (crashed) {
+      await this.markFailed(jobId);
+      logEvent(this.deps.log, AUDIT_EVENT.inferenceFailed, {
+        jobId,
+        apiKeyId,
+        workerPubKey: worker.pubKey,
+        streaming: true,
+        err: crashed instanceof Error ? crashed.message : String(crashed),
+      });
+      if (crashed instanceof DomainError) throw crashed;
+      throw new DomainError({
+        statusCode: 503,
+        code: ERROR_CODE.workerTimeout,
+        message: 'Streaming inference failed.',
+        details: { cause: crashed instanceof Error ? crashed.message : String(crashed) },
+      });
+    }
+
+    await this.deps.jobsState.transition(jobId, {
+      status: 'complete',
+      tokensIn: final!.promptTokens,
+      tokensOut: final!.completionTokens,
+    });
+    logEvent(this.deps.log, AUDIT_EVENT.inferenceCompleted, {
+      jobId,
+      apiKeyId,
+      workerPubKey: worker.pubKey,
+      finishReason: final!.finishReason,
+      completionTokens: final!.completionTokens,
+      streaming: true,
     });
   }
 
