@@ -4,11 +4,11 @@ The web dashboard for the Cosmic GPU cloud.
 
 ## Pages (Planned)
 
-| Route | Purpose |
-|---|---|
-| `/keys` | Create / list / revoke API keys; copy plaintext on creation |
-| `/playground` | OpenAI-style chat UI; streamed tokens via SSE; stop button |
-| `/dashboard` | Live metrics — request volume, tokens consumed, worker pool size, peer count |
+| Route         | Purpose                                                                      |
+| ------------- | ---------------------------------------------------------------------------- |
+| `/keys`       | Create / list / revoke API keys; copy plaintext on creation                  |
+| `/playground` | OpenAI-style chat UI; streamed tokens via SSE; stop button                   |
+| `/dashboard`  | Live metrics — request volume, tokens consumed, worker pool size, peer count |
 
 ## Stack
 

@@ -26,6 +26,7 @@ src/
 ## Mock LLM Behavior
 
 The worker does **not** run a real model. The simulator produces:
+
 - A pseudo-streamed sequence of tokens with configurable delay.
 - A final completion summary with token counts and latency.
 - Optional injected failure modes (slow / disconnected / truncated) for resilience testing.

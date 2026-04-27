@@ -14,15 +14,15 @@ The HTTP gateway and P2P dispatcher for the Cosmic GPU cloud.
 
 ## Endpoints (Planned)
 
-| Method | Path | Auth | Notes |
-|---|---|---|---|
-| `GET` | `/health` | — | Liveness + p2p connection status |
-| `GET` | `/metrics` | — | JSON or Prometheus format |
-| `POST` | `/api-keys` | API key | Create a new key (plaintext returned once) |
-| `GET` | `/api-keys` | API key | List the caller's keys |
-| `DELETE` | `/api-keys/:id` | API key | Revoke a key |
-| `GET` | `/v1/models` | — | List available worker capabilities |
-| `POST` | `/v1/chat/completions` | API key | Streaming + non-streaming inference |
+| Method   | Path                   | Auth    | Notes                                      |
+| -------- | ---------------------- | ------- | ------------------------------------------ |
+| `GET`    | `/health`              | —       | Liveness + p2p connection status           |
+| `GET`    | `/metrics`             | —       | JSON or Prometheus format                  |
+| `POST`   | `/api-keys`            | API key | Create a new key (plaintext returned once) |
+| `GET`    | `/api-keys`            | API key | List the caller's keys                     |
+| `DELETE` | `/api-keys/:id`        | API key | Revoke a key                               |
+| `GET`    | `/v1/models`           | —       | List available worker capabilities         |
+| `POST`   | `/v1/chat/completions` | API key | Streaming + non-streaming inference        |
 
 ## Project Structure
 

@@ -13,6 +13,7 @@ This is a **2-day take-home assignment** for the **Senior Fullstack Software Eng
 The goal is to build a simplified **distributed GPU cloud service platform** that demonstrates fullstack and distributed-systems competency. The platform offers API key management, model deployment workflows, and OpenAI-compatible inference, with workload distributed across simulated GPU "worker nodes" using the Holepunch P2P stack.
 
 **Reference materials in this folder:**
+
 - `Tether Operations Limited - Senior Fullstack Software Engineer (100% Remote).pdf` — role and requirements.
 - `Senior Fullstack Software Engineer Task.pdf` — the test brief and evaluation criteria.
 - `Study Guide Senior Fullstack Engineer.md` — networking + Holepunch primer.
@@ -22,20 +23,20 @@ The goal is to build a simplified **distributed GPU cloud service platform** tha
 
 ## 2. Tech Stack
 
-| Layer | Choice | Notes |
-|---|---|---|
-| Runtime | **Node.js 22+** | We deliberately do **NOT** target Pear Runtime / Bare for the 2-day window — see "Trade-offs" below |
-| Language | **TypeScript** (strict mode) end-to-end | |
-| Monorepo | **pnpm workspaces** | `apps/backend`, `apps/frontend`, `apps/worker`, `packages/shared` |
-| Backend | **Fastify** + `@fastify/swagger` + `@fastify/type-provider-typebox` (or Zod) | OpenAPI-driven |
-| P2P | `hyperswarm`, `@hyperswarm/rpc`, `hyperdht` | Discovery, RPC, NAT traversal |
-| State | `hyperdb` (or `hyperbee` on `hypercore` if needed) | Distributed K/V — workers, keys, jobs, usage |
-| Encoding | `compact-encoding` | All cross-process RPC messages |
-| Frontend | **React 18 + Vite + TanStack Query + Zustand + Tailwind** | SSE for streaming inference |
-| Tests | **Vitest** + `@testing-library/react` + Fastify `app.inject` | |
-| Containers | **Docker Compose** (1 backend + ≥3 workers) | Persistent volumes for Hypercore data |
-| CI/CD | **GitHub Actions** | lint → typecheck → test → build |
-| Logging | **Pino** structured JSON | |
+| Layer      | Choice                                                                       | Notes                                                                                               |
+| ---------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Runtime    | **Node.js 22+**                                                              | We deliberately do **NOT** target Pear Runtime / Bare for the 2-day window — see "Trade-offs" below |
+| Language   | **TypeScript** (strict mode) end-to-end                                      |                                                                                                     |
+| Monorepo   | **pnpm workspaces**                                                          | `apps/backend`, `apps/frontend`, `apps/worker`, `packages/shared`                                   |
+| Backend    | **Fastify** + `@fastify/swagger` + `@fastify/type-provider-typebox` (or Zod) | OpenAPI-driven                                                                                      |
+| P2P        | `hyperswarm`, `@hyperswarm/rpc`, `hyperdht`                                  | Discovery, RPC, NAT traversal                                                                       |
+| State      | `hyperdb` (or `hyperbee` on `hypercore` if needed)                           | Distributed K/V — workers, keys, jobs, usage                                                        |
+| Encoding   | `compact-encoding`                                                           | All cross-process RPC messages                                                                      |
+| Frontend   | **React 18 + Vite + TanStack Query + Zustand + Tailwind**                    | SSE for streaming inference                                                                         |
+| Tests      | **Vitest** + `@testing-library/react` + Fastify `app.inject`                 |                                                                                                     |
+| Containers | **Docker Compose** (1 backend + ≥3 workers)                                  | Persistent volumes for Hypercore data                                                               |
+| CI/CD      | **GitHub Actions**                                                           | lint → typecheck → test → build                                                                     |
+| Logging    | **Pino** structured JSON                                                     |                                                                                                     |
 
 ---
 
@@ -47,6 +48,7 @@ Per the task brief: **"2 features done well over 5 done poorly."**
 2. **OpenAI-Compatible Streaming Inference, Distributed via P2P** — `POST /v1/chat/completions` (streaming + non-streaming), `GET /v1/models`; backend dispatches to a worker via Hyperswarm RPC; worker streams synthetic tokens; failure handling + telemetry.
 
 Plus a **Frontend Dashboard** that exercises both features:
+
 - API keys page (CRUD + copy plaintext on create).
 - Inference playground (prompt → streamed response).
 - Usage dashboard (charts for requests/tokens, worker pool size, peer count).
@@ -58,6 +60,7 @@ See `.cursor/rules/scope-and-prioritization.mdc` for the full MVP / Should / Cou
 ## 4. Definition of Done
 
 A feature is "done" only when **all** of the following are true:
+
 - ✅ Happy path works end-to-end and is reproducible from the README quick-start.
 - ✅ At least one **success** test and one **error** test (Vitest).
 - ✅ Documented in the OpenAPI spec where applicable.
@@ -70,6 +73,7 @@ A feature is "done" only when **all** of the following are true:
 ## 5. Deliverables Checklist
 
 From the task brief:
+
 - [ ] Public GitHub repo with README + setup instructions.
 - [ ] OpenAPI spec (auto-generated by `@fastify/swagger`, served at `/docs`).
 - [ ] `docs/architecture.md` (2–3 pages) covering: system design, distributed approach, trade-offs/assumptions, scalability, future improvements.
@@ -96,59 +100,64 @@ From the task brief:
 
 These choices differ from the initial implementation plan; each is intentional and must be documented in `docs/architecture.md`:
 
-| Decision | Implementation Plan Suggestion | Our Choice | Rationale |
-|---|---|---|---|
-| Runtime | Pear Runtime + Bare | Plain Node.js | Pear ecosystem is "unstable" (per the plan); Node.js + Holepunch libs is Docker-friendly and reliable in a 2-day window |
-| Auth | Not specified | API key only (no users) | Matches the task's API-key focus; minimizes surface |
-| Real-time UI | Not specified | TanStack Query polling for metrics; SSE for inference streams | Simpler than WebSocket; OpenAI-compatible |
-| Rate limiter | Distributed | In-memory per backend instance | Demo-grade; documented as a single-instance limitation |
-| Inference | Not specified | Mock token generator on workers | The task says simulation is acceptable |
+| Decision     | Implementation Plan Suggestion | Our Choice                                                    | Rationale                                                                                                               |
+| ------------ | ------------------------------ | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Runtime      | Pear Runtime + Bare            | Plain Node.js                                                 | Pear ecosystem is "unstable" (per the plan); Node.js + Holepunch libs is Docker-friendly and reliable in a 2-day window |
+| Auth         | Not specified                  | API key only (no users)                                       | Matches the task's API-key focus; minimizes surface                                                                     |
+| Real-time UI | Not specified                  | TanStack Query polling for metrics; SSE for inference streams | Simpler than WebSocket; OpenAI-compatible                                                                               |
+| Rate limiter | Distributed                    | In-memory per backend instance                                | Demo-grade; documented as a single-instance limitation                                                                  |
+| Inference    | Not specified                  | Mock token generator on workers                               | The task says simulation is acceptable                                                                                  |
 
 ---
 
 ## 8. Rule Index (`.cursor/rules/`)
 
-| File | Purpose |
-|---|---|
-| `project-structure.mdc` | Monorepo layout, shared package, app folders |
-| `coding-standards.mdc` | TypeScript, Fastify, async, errors, config |
-| `naming-conventions.mdc` | Files, classes, vars, routes, env vars, P2P artifacts |
-| `api-documentation.mdc` | OpenAPI/Swagger, OpenAI-compat schemas |
-| `p2p-architecture.mdc` | Hyperswarm, RPC, HyperDB, GC, Compact Encoding |
-| `frontend-standards.mdc` | React + Vite + TanStack Query + Zustand + SSE |
-| `testing-standards.mdc` | Vitest, factories, critical-path focus |
-| `security-standards.mdc` | API keys, rate limit, secrets, encryption |
-| `observability.mdc` | Logging, /health, /metrics, telemetry |
-| `docker-and-cicd.mdc` | Docker Compose, GitHub Actions |
-| `git-commit-message-convention.mdc` | Conventional Commits + workflow rules |
-| `scope-and-prioritization.mdc` | MVP guardrails, time budget, decision heuristics |
-| `pear-runtime.mdc` | **Like-to-have / future direction.** Migration sketch to Pear Runtime / Bare. Not the current target. |
+| File                                | Purpose                                                                                               |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `project-structure.mdc`             | Monorepo layout, shared package, app folders                                                          |
+| `coding-standards.mdc`              | TypeScript, Fastify, async, errors, config                                                            |
+| `naming-conventions.mdc`            | Files, classes, vars, routes, env vars, P2P artifacts                                                 |
+| `api-documentation.mdc`             | OpenAPI/Swagger, OpenAI-compat schemas                                                                |
+| `p2p-architecture.mdc`              | Hyperswarm, RPC, HyperDB, GC, Compact Encoding                                                        |
+| `frontend-standards.mdc`            | React + Vite + TanStack Query + Zustand + SSE                                                         |
+| `testing-standards.mdc`             | Vitest, factories, critical-path focus                                                                |
+| `security-standards.mdc`            | API keys, rate limit, secrets, encryption                                                             |
+| `observability.mdc`                 | Logging, /health, /metrics, telemetry                                                                 |
+| `docker-and-cicd.mdc`               | Docker Compose, GitHub Actions                                                                        |
+| `git-commit-message-convention.mdc` | Conventional Commits + workflow rules                                                                 |
+| `scope-and-prioritization.mdc`      | MVP guardrails, time budget, decision heuristics                                                      |
+| `pear-runtime.mdc`                  | **Like-to-have / future direction.** Migration sketch to Pear Runtime / Bare. Not the current target. |
 
 ---
 
 ## 9. AI Assistant Operating Procedure
 
 **Before you change code:**
+
 1. Read this file and the relevant rule(s) under `.cursor/rules/`.
 2. Confirm the change is in scope (see `scope-and-prioritization.mdc`). If not, surface the trade-off and ask the user.
 3. For non-trivial work (3+ steps or new components), present a short plan and ask before executing.
 
 **While you change code:**
+
 1. Follow the rules; do not silently override them.
 2. Use `pnpm` for all package management. Use `pnpm --filter <app>` to scope commands.
 3. Keep commits atomic; do not bundle unrelated changes.
 
 **Before you commit:**
+
 1. Run `pnpm lint`, `pnpm typecheck`, and `pnpm test --run`.
 2. Show the user `git status`, the staged diff, the proposed commit message, and the proposed `git commit` / `git push` commands.
 3. **Wait for explicit user confirmation.** Never auto-commit, never auto-push.
 
 **When you finish a feature:**
+
 1. Update `docs/architecture.md` (trade-offs, future improvements).
 2. Update README quick-start if the demo path changed.
 3. Verify the Definition of Done checklist (Section 4).
 
 **When in doubt:**
+
 - Ask. Do not invent. Do not guess at unstated requirements.
 - Surface assumptions explicitly so they can be approved or rejected.
 
@@ -180,6 +189,7 @@ open http://localhost:3000/docs
 ## 11. Acceptance Bar
 
 The reviewer is evaluating:
+
 1. **Architectural reasoning** — can you explain every decision?
 2. **Distributed-systems thinking** — discovery, RPC, encoding, failure handling, encryption, GC.
 3. **Backend robustness** — auth, rate limiting, validation, observability.

@@ -1,0 +1,11 @@
+**/dist
+**/node_modules
+**/coverage
+**/.turbo
+**/data
+pnpm-lock.yaml
+*.tsbuildinfo
+
+# Reference materials provided by the user (don't reformat)
+.cursor/originais/
+*.pdf

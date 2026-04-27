@@ -1,6 +1,7 @@
 # `@cosmic/shared` — Cross-Process Contracts
 
 The single source of truth for everything that crosses process boundaries in the Cosmic GPU cloud:
+
 - **Compact Encoding schemas** — binary serialization for Hyperswarm RPC payloads.
 - **TypeBox / TypeScript DTOs** — used by Fastify validation and the React frontend.
 - **Topic constants** — the 32-byte Hyperswarm discovery topic.

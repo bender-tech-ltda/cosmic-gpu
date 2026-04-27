@@ -27,13 +27,13 @@
     "build": "tsc -p tsconfig.json",
     "dev": "tsc -p tsconfig.json --watch",
     "test": "vitest",
-    "lint": "eslint src --ext .ts",
+    "lint": "eslint --no-error-on-unmatched-pattern src",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@sinclair/typebox": "^0.33.0",
-    "compact-encoding": "^2.15.0"
+    "@sinclair/typebox": "^0.34.0",
+    "compact-encoding": "^3.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.7.0",

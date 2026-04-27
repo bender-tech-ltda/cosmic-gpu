@@ -9,14 +9,14 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/worker.js",
     "test": "vitest",
-    "lint": "eslint src --ext .ts",
+    "lint": "eslint --no-error-on-unmatched-pattern src",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist"
   },
   "dependencies": {
     "@cosmic/shared": "workspace:*",
-    "@hyperswarm/rpc": "^4.0.0",
-    "compact-encoding": "^2.15.0",
+    "@hyperswarm/rpc": "^3.4.0",
+    "compact-encoding": "^3.0.0",
     "envalid": "^8.0.0",
     "hyperswarm": "^4.7.0",
     "pino": "^9.5.0"
