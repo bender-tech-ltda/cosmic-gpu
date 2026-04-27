@@ -22,8 +22,8 @@ The HTTP gateway and P2P dispatcher for the Cosmic GPU cloud.
 | ✅ live   | `GET`    | `/v1/api-keys`         | public¹ | List API keys (public-safe; no plaintext / hash leaked)   |
 | ✅ live   | `DELETE` | `/v1/api-keys/:id`     | public¹ | Revoke a key (idempotent)                                 |
 | ✅ live   | `GET`    | `/v1/models`           | —       | List available worker capabilities (mock-llm placeholder) |
-| 🚧 Step 6 | `POST`   | `/v1/chat/completions` | API key | Non-streaming inference                                   |
-| 🚧 Step 7 | `POST`   | `/v1/chat/completions` | API key | Streaming inference (SSE)                                 |
+| ✅ live   | `POST`   | `/v1/chat/completions` | API key | Non-streaming inference                                   |
+| ✅ live   | `POST`   | `/v1/chat/completions` | API key | Streaming inference (SSE, `stream: true`)                 |
 | 🚧 Step 8 | `GET`    | `/v1/usage/me`         | API key | Per-key usage summary                                     |
 
 ¹ The `/v1/api-keys` management endpoints are deliberately **unauthenticated** for the take-home demo — otherwise the very first key creation has a chicken-and-egg problem. Production hardening (admin-token / mTLS) is captured in [`docs/architecture.md`](../../docs/architecture.md) §4 + §6. Inference endpoints (Steps 6–7) will require a Bearer key via the `app.authenticate` `preHandler`.

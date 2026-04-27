@@ -65,15 +65,16 @@ The backend acts as a dispatcher (Step 6). Worker selection is least-in-flight w
 
 ## 3. Failure Scenarios and Resilience
 
-| Scenario                         | Response                                                                                                         |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| All workers offline              | Backend returns `503 NoWorkersAvailable` with `Retry-After`; the request is not queued in the MVP.               |
-| Worker disappears mid-stream     | Backend terminates the SSE connection with a final `data: {error: WorkerTimeout}` event. No silent reconnection. |
-| Worker disappears mid non-stream | Backend re-dispatches once to another worker; on second failure, returns `503 WorkerTimeout`.                    |
-| Topic mismatch / no peers found  | Backend logs `warn` after N seconds with no peers and reports `p2p.connected: false` on `/health`.               |
-| Hyperbee write conflict          | Last-write-wins with monotonic ISO timestamps on every record. Documented as a single-writer simplification.     |
-| Rate limit exceeded              | `429` envelope with `Retry-After`; per-key bucket.                                                               |
-| Invalid bearer                   | `401 ApiKeyInvalid` envelope; revoked keys yield `403 ApiKeyRevoked`.                                            |
+| Scenario                         | Response                                                                                                                                                                                                                                                                                                 |
+| -------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| All workers offline              | Backend returns `503 NoWorkersAvailable` with `Retry-After`; the request is not queued in the MVP.                                                                                                                                                                                                       |
+| Worker disappears mid-stream     | Backend terminates the SSE connection with a final `data: {error: WorkerTimeout}` event. No silent reconnection.                                                                                                                                                                                         |
+| Client disconnects mid-stream    | Backend's route hooks `request.raw.on('close')` → `AbortController.abort()`; the dispatcher's `dispatchStream` finally-block closes the Protomux channel; the worker's generator observes the close and emits `finishReason: 'cancelled'`. Job transitions to `failed` and `inference.failed` is logged. |
+| Worker disappears mid non-stream | Backend re-dispatches once to another worker; on second failure, returns `503 WorkerTimeout`.                                                                                                                                                                                                            |
+| Topic mismatch / no peers found  | Backend logs `warn` after N seconds with no peers and reports `p2p.connected: false` on `/health`.                                                                                                                                                                                                       |
+| Hyperbee write conflict          | Last-write-wins with monotonic ISO timestamps on every record. Documented as a single-writer simplification.                                                                                                                                                                                             |
+| Rate limit exceeded              | `429` envelope with `Retry-After`; per-key bucket.                                                                                                                                                                                                                                                       |
+| Invalid bearer                   | `401 ApiKeyInvalid` envelope; revoked keys yield `403 ApiKeyRevoked`.                                                                                                                                                                                                                                    |
 
 ## 4. Trade-offs and Deliberate Divergences
 
