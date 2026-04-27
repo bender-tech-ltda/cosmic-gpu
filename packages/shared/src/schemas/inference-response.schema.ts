@@ -2,7 +2,14 @@
 // Tagged union: `chunk` (token delta) | `final` (terminal envelope).
 // SCHEMA EVOLUTION POLICY: APPEND-ONLY.
 
-import { cstring, cuint, defineObject, taggedUnion, type Codec } from './codec.helpers.js';
+import {
+  cstring,
+  cuint,
+  defineObject,
+  optional,
+  taggedUnion,
+  type Codec,
+} from './codec.helpers.js';
 
 export type InferenceFinishReason = 'stop' | 'length' | 'cancelled';
 
@@ -19,6 +26,12 @@ export interface InferenceResponseFinal {
   promptTokens: number;
   completionTokens: number;
   workerPubKey: string;
+  /**
+   * Full completion text. Optional + appended at the END of the codec for
+   * backwards compatibility — older writers (which omit it) still produce
+   * valid wire frames; older readers ignore the trailing optional.
+   */
+  text?: string;
 }
 
 export type InferenceResponse = InferenceResponseChunk | InferenceResponseFinal;
@@ -34,6 +47,7 @@ const finalInner: Codec<Omit<InferenceResponseFinal, 'kind'>> = defineObject({
   promptTokens: cuint,
   completionTokens: cuint,
   workerPubKey: cstring,
+  text: optional(cstring),
 });
 
 export const inferenceResponseCodec: Codec<InferenceResponse> = taggedUnion<InferenceResponse>({

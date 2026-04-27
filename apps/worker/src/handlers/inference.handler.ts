@@ -33,7 +33,7 @@ export async function runInference(
         ? Math.min(request.maxTokens, deps.defaultMaxTokens)
         : deps.defaultMaxTokens;
 
-    const { final } = await runMockLlm({
+    const { text, final } = await runMockLlm({
       jobId: request.jobId,
       prompt,
       maxTokens: cap,
@@ -49,6 +49,7 @@ export async function runInference(
       promptTokens: final.promptTokens,
       completionTokens: final.completionTokens,
       workerPubKey: deps.workerPubKey,
+      text,
     };
   } finally {
     deps.inFlightCounter.decrement();

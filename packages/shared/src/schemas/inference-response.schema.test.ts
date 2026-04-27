@@ -91,4 +91,35 @@ describe('inferenceResponseCodec', () => {
     const buf = encode(inferenceResponseCodec, original);
     expect(decode(inferenceResponseCodec, buf)).toEqual(original);
   });
+
+  it('round-trips a final variant with completion text', () => {
+    const original: InferenceResponse = {
+      kind: 'final',
+      jobId: 'j',
+      finishReason: 'stop',
+      promptTokens: 3,
+      completionTokens: 5,
+      workerPubKey: 'wk',
+      text: 'the quick brown fox \ud83d\ude80',
+    };
+    const buf = encode(inferenceResponseCodec, original);
+    expect(decode(inferenceResponseCodec, buf)).toEqual(original);
+  });
+
+  it('decodes a final variant without text as undefined', () => {
+    const original: InferenceResponse = {
+      kind: 'final',
+      jobId: 'j',
+      finishReason: 'length',
+      promptTokens: 1,
+      completionTokens: 2,
+      workerPubKey: 'wk',
+    };
+    const buf = encode(inferenceResponseCodec, original);
+    const decoded = decode(inferenceResponseCodec, buf) as Extract<
+      InferenceResponse,
+      { kind: 'final' }
+    >;
+    expect(decoded.text).toBeUndefined();
+  });
 });
