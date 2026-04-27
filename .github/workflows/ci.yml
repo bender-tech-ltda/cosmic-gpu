@@ -6,6 +6,7 @@ on:
     branches: [main]
 jobs:
   ci:
+    name: lint / typecheck / test / build
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -29,3 +30,25 @@ jobs:
         run: pnpm build
       - name: Prettier check
         run: pnpm format:check
+
+  docker:
+    name: docker buildx (${{ matrix.image }})
+    needs: [ci]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [backend, worker]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build ${{ matrix.image }} image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/${{ matrix.image }}.Dockerfile
+          push: false
+          load: false
+          cache-from: type=gha,scope=${{ matrix.image }}
+          cache-to: type=gha,scope=${{ matrix.image }},mode=max

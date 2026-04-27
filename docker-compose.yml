@@ -4,12 +4,31 @@
 # implementation plan and `docker-and-cicd.mdc`).
 #
 # Usage:
-#   docker compose up --build
-#   docker compose --profile dev up      # opt-in to the frontend container
+#   docker compose up --build                    # public Holepunch DHT
+#   docker compose --profile p2p-local up        # self-contained DHT bootstrap
 
 name: cosmic
 
 services:
+  # Optional self-contained HyperDHT bootstrap node. Useful when the public
+  # Holepunch DHT is unreachable (CI sandboxes, restricted networks). Set
+  # `P2P_BOOTSTRAP=dht:49737` (default in this Compose profile) to point
+  # backend + workers at it.
+  dht:
+    image: node:22-bookworm-slim
+    profiles: [p2p-local]
+    networks: [cosmic-net]
+    working_dir: /app
+    volumes:
+      - .:/app
+    command: >-
+      bash -lc "corepack enable && corepack prepare pnpm@9 --activate &&
+      pnpm install --frozen-lockfile=false --filter @cosmic/backend... &&
+      node -e \"const HyperDHT=require('hyperdht');const dht=new HyperDHT({port:49737});dht.ready().then(()=>console.log('dht.ready',dht.address()));process.on('SIGINT',()=>dht.destroy().then(()=>process.exit(0)));process.on('SIGTERM',()=>dht.destroy().then(()=>process.exit(0)));\""
+    expose:
+      - '49737'
+    restart: unless-stopped
+
   backend:
     build:
       context: .
@@ -21,7 +40,10 @@ services:
       BACKEND_HOST: 0.0.0.0
       BACKEND_PORT: 3000
       P2P_DISCOVERY_TOPIC: ${P2P_DISCOVERY_TOPIC:-}
-      P2P_BOOTSTRAP: ${P2P_BOOTSTRAP:-}
+      # When the `p2p-local` profile is active, bootstrap against the
+      # in-Compose DHT node instead of the public Holepunch DHT. Outside
+      # the profile, this falls back to whatever `.env` has set.
+      P2P_BOOTSTRAP: ${P2P_BOOTSTRAP:-dht:49737}
       STATE_BACKEND: hyperbee
       DATA_DIR: /data
       NODE_KEYPAIR_PATH: /data/node.keypair
@@ -51,7 +73,7 @@ services:
     environment:
       WORKER_ID: worker1
       P2P_DISCOVERY_TOPIC: ${P2P_DISCOVERY_TOPIC:-}
-      P2P_BOOTSTRAP: ${P2P_BOOTSTRAP:-}
+      P2P_BOOTSTRAP: ${P2P_BOOTSTRAP:-dht:49737}
       DATA_DIR: /data
       NODE_KEYPAIR_PATH: /data/node.keypair
     volumes:
@@ -68,7 +90,7 @@ services:
     environment:
       WORKER_ID: worker2
       P2P_DISCOVERY_TOPIC: ${P2P_DISCOVERY_TOPIC:-}
-      P2P_BOOTSTRAP: ${P2P_BOOTSTRAP:-}
+      P2P_BOOTSTRAP: ${P2P_BOOTSTRAP:-dht:49737}
       DATA_DIR: /data
       NODE_KEYPAIR_PATH: /data/node.keypair
     volumes:
@@ -85,7 +107,7 @@ services:
     environment:
       WORKER_ID: worker3
       P2P_DISCOVERY_TOPIC: ${P2P_DISCOVERY_TOPIC:-}
-      P2P_BOOTSTRAP: ${P2P_BOOTSTRAP:-}
+      P2P_BOOTSTRAP: ${P2P_BOOTSTRAP:-dht:49737}
       DATA_DIR: /data
       NODE_KEYPAIR_PATH: /data/node.keypair
     volumes:
