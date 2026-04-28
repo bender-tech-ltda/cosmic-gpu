@@ -23,6 +23,19 @@ import { buildHealthSnapshot, type WorkerHealthDeps } from '../handlers/health.h
 import { runInference, type InferenceHandlerDeps } from '../handlers/inference.handler.js';
 import type { WorkerIdentity } from './identity.js';
 
+// Zero-byte request codec for `worker.health`. Must match the backend's
+// `HEALTH_REQUEST_CODEC` in `apps/backend/src/p2p/registry.ts`. Without
+// this, the RPC framework falls back to a default encoding that throws
+// `DECODE_ERROR: Out of bounds` when it tries to read the empty payload
+// the backend sends.
+const HEALTH_REQUEST_CODEC = {
+  preencode(): void {},
+  encode(): void {},
+  decode(): undefined {
+    return undefined;
+  },
+};
+
 export interface RpcServerHandle {
   server: RpcServer;
   rpc: HyperswarmRPC;
@@ -83,7 +96,10 @@ export async function startRpcServer(deps: RpcServerDeps): Promise<RpcServerHand
 
   server.respond<undefined, WorkerHealth>(
     RPC_METHOD.workerHealth,
-    { responseEncoding: workerHealthCodec },
+    {
+      requestEncoding: HEALTH_REQUEST_CODEC,
+      responseEncoding: workerHealthCodec,
+    },
     async () => buildHealthSnapshot(deps.health),
   );
 
