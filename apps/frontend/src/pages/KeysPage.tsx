@@ -31,6 +31,7 @@ export default function KeysPage(): JSX.Element {
 
   const [newKeyName, setNewKeyName] = useState('');
   const [createdKey, setCreatedKey] = useState<ApiKeyCreatedResponse | null>(null);
+  const [pastedKey, setPastedKey] = useState('');
 
   const onCreate = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
@@ -69,6 +70,14 @@ export default function KeysPage(): JSX.Element {
   };
 
   const onClearActive = (): void => setActiveApiKey(null);
+
+  const onUseExistingKey = (e: FormEvent<HTMLFormElement>): void => {
+    e.preventDefault();
+    const trimmed = pastedKey.trim();
+    if (trimmed.length === 0) return;
+    setActiveApiKey(trimmed);
+    setPastedKey('');
+  };
 
   return (
     <section className="space-y-6">
@@ -135,16 +144,43 @@ export default function KeysPage(): JSX.Element {
         <ErrorBanner error={createMutation.error} variant="inline" />
       </Card>
 
-      <Card
-        title="Existing keys"
-        actions={
-          activeKey ? (
-            <Button variant="ghost" onClick={onClearActive}>
+      <Card title="Use an existing key">
+        <p className="text-sm text-slate-600">
+          Paste a plaintext key (e.g. one you copied earlier or created via{' '}
+          <code className="rounded bg-slate-100 px-1 text-xs">curl</code>) to set it as the active
+          bearer for the Playground and the Dashboard's per-key usage view. Held in{' '}
+          <strong>sessionStorage</strong> only — closing this tab forgets it.
+        </p>
+        <form
+          onSubmit={onUseExistingKey}
+          className="mt-3 flex flex-wrap items-end gap-3"
+          data-testid="use-existing-key-form"
+        >
+          <label className="flex-1">
+            <span className="mb-1 block text-xs font-medium text-slate-700">Plaintext key</span>
+            <input
+              type="password"
+              autoComplete="off"
+              spellCheck={false}
+              value={pastedKey}
+              onChange={(e) => setPastedKey(e.target.value)}
+              placeholder="sk-…"
+              className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 font-mono text-sm text-slate-900 focus:border-slate-500 focus:outline-none"
+              data-testid="existing-key-input"
+            />
+          </label>
+          <Button type="submit" disabled={pastedKey.trim().length === 0}>
+            Use this key
+          </Button>
+          {activeKey !== null && (
+            <Button type="button" variant="ghost" onClick={onClearActive}>
               Clear active key
             </Button>
-          ) : undefined
-        }
-      >
+          )}
+        </form>
+      </Card>
+
+      <Card title="Existing keys">
         {list.isLoading && <LoadingSpinner label="Loading keys…" />}
         <ErrorBanner error={list.error} variant="inline" />
         {list.isSuccess && list.data.data.length === 0 && (

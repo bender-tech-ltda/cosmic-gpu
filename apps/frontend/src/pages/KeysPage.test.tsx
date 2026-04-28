@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import KeysPage from './KeysPage.js';
 import { createTestQueryWrapper } from '../hooks/test-utils.js';
-import { setActiveApiKey } from '../lib/api-key-store.js';
+import { getActiveApiKey, setActiveApiKey } from '../lib/api-key-store.js';
 
 interface FetchCall {
   url: string;
@@ -85,6 +85,27 @@ describe('<KeysPage />', () => {
     renderKeysPage();
     const submit = screen.getByRole('button', { name: /create key/i });
     expect(submit).toBeDisabled();
+  });
+
+  it('sets the active key from the "Use an existing key" form', async () => {
+    renderKeysPage();
+    const input = screen.getByTestId('existing-key-input') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'sk-PRE-EXISTING' } });
+    fireEvent.click(screen.getByRole('button', { name: /Use this key/i }));
+
+    await waitFor(() => expect(getActiveApiKey()).toBe('sk-PRE-EXISTING'));
+    // Field is cleared after submission.
+    expect(input.value).toBe('');
+    // Clear-active control surfaces.
+    expect(screen.getByRole('button', { name: /Clear active key/i })).toBeInTheDocument();
+  });
+
+  it('rejects an empty paste (button stays disabled)', () => {
+    renderKeysPage();
+    const useBtn = screen.getByRole('button', { name: /Use this key/i });
+    expect(useBtn).toBeDisabled();
+    fireEvent.change(screen.getByTestId('existing-key-input'), { target: { value: '   ' } });
+    expect(useBtn).toBeDisabled();
   });
 
   it('shows the one-time plaintext banner after a successful create', async () => {
