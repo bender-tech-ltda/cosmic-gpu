@@ -36,7 +36,12 @@ export interface BootstrapP2pOptions {
 export async function bootstrapP2p(opts: BootstrapP2pOptions): Promise<CosmicP2p> {
   const { config, state, log } = opts;
   const swarm = await joinSwarm(config, state.identity, log);
-  const rpcClient = createRpcClient({ identity: state.identity, dht: swarm.swarm.dht });
+  // RPC client owns its own DHT (per `@hyperswarm/rpc` doc default). The
+  // streaming transport keeps using the swarm's DHT because
+  // `dht.connect()` does not register a keypair with the DHT — only
+  // `dht.createServer().listen()` does — so the keypair-reuse rule
+  // doesn't apply there.
+  const rpcClient = createRpcClient({ identity: state.identity });
   const streamTransport = createProtomuxStreamTransport({
     identity: state.identity,
     dht: swarm.swarm.dht,

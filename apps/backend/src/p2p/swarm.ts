@@ -60,6 +60,27 @@ export async function joinSwarm(
     ...(bootstrap !== undefined ? { bootstrap } : {}),
   });
 
+  // Catch swarm-level failures (DHT lookup errors, listener exceptions) so
+  // they don't terminate the process via the EventEmitter `'error'`
+  // contract. We log and let Hyperswarm continue — the swarm self-heals.
+  swarm.on('error', (err: unknown) => {
+    log.warn({ err }, 'hyperswarm.swarm_error');
+  });
+
+  // Every incoming peer is a NoiseSecretStream. Attach a defensive `'error'`
+  // listener BEFORE any other consumer (registry.ts, RPC, etc.) so a peer
+  // resetting the connection mid-handshake doesn't crash the process. The
+  // stream destroys itself on error; downstream consumers observe it via
+  // their own close hooks.
+  swarm.on('connection', (conn: unknown) => {
+    const emitter = conn as { on?: (event: 'error', cb: (err: unknown) => void) => void };
+    if (typeof emitter.on === 'function') {
+      emitter.on('error', (err: unknown) => {
+        log.warn({ err }, 'hyperswarm.connection_error');
+      });
+    }
+  });
+
   const discovery = swarm.join(topic, { client: true, server: true });
   await discovery.flushed();
 
