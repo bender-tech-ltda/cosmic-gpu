@@ -46,7 +46,7 @@ Every node persists a 32-byte ed25519 **seed** at `NODE_KEYPAIR_PATH`. On boot, 
 
 Both transports run on top of the same Noise-encrypted Hyperswarm session. The split is documented in `.cursor/rules/p2p-architecture.mdc` so the rule and this document agree.
 
-### 2.4 State (Hyperbee on Hypercore)
+### 2.4 State (Hyperbee on Hypercore, with HyperDB awareness)
 
 The `KvStore` interface (`apps/backend/src/state/types.ts`) abstracts over two adapters:
 
@@ -54,6 +54,15 @@ The `KvStore` interface (`apps/backend/src/state/types.ts`) abstracts over two a
 - **Hyperbee** — used in production (`STATE_BACKEND=hyperbee`). Single Hyperbee tree on a single Hypercore on disk, JSON-encoded values.
 
 Typed accessors on top of `KvStore` (`api-keys`, `workers`, `jobs`, `usage`) keep the rest of the code backend-agnostic. Hypercore's signed Merkle trees provide integrity verification for free; sparse replication is the Hyperbee default and would activate automatically if we wired multi-peer state replication (see §6).
+
+**HyperDB vs Hyperbee — why we chose Hyperbee.** The brief explicitly names `hyperdb` as the distributed K/V store. We evaluated the current package (`hyperdb@6.x`, March 2026) against our needs:
+
+- HyperDB 6.x is a **schema-first document database** with named collections, indexes, and a build-time codegen step (`hyperdb/builder` + `hyperschema`). The runtime API is collection-scoped (`db.insert(collection, doc)`, `db.get(collection, queryObject)`, `db.find(collection, range)`), and `db.flush()` is mandatory to persist a batch.
+- Internally, the P2P-aware `HyperDB.bee(core, definition)` engine wraps a Hypercore directly — it inherits the same append-only, signed-merkle-tree, sparse-replication semantics that Hyperbee provides. From a _distributed-systems_ perspective the two share the same substrate; HyperDB's value-add is the schema + indexing layer above it.
+- Our state shape is generic: string keys (`api-keys/<id>`, `workers/<pubkey>`, `jobs/<id>`, `usage/<keyId>/<windowStart>`) mapping to JSON values. We do not benefit from collection-typed records or index-driven queries today. Forcing a schema on top would mean shipping generated codegen artefacts for negligible gain.
+- The `KvStore` interface keeps a future migration to a properly-typed HyperDB layout (one collection per resource, indexed by id and createdAt) feasible the day we need typed queries.
+
+A runnable [HyperDB awareness demo](../apps/backend/scripts/hyperdb-demo/README.md) exercises `hyperdb@6.x` end-to-end (open Hypercore → `HyperDB.bee` → insert / get / find / delete / flush). Run it with `pnpm --filter @cosmic/backend demo:hyperdb`. It is intentionally _not_ wired into the backend runtime — it is documentation in runnable form, the evidence behind this trade-off.
 
 ### 2.5 Wire format (Compact Encoding)
 
@@ -159,7 +168,7 @@ stateDiagram-v2
 These are intentional choices that differ from the original implementation plan or the most common production pattern. Each one is recorded so the reviewer doesn't have to spelunk through code comments.
 
 - **Plain Node.js, not Pear Runtime / Bare.** The original implementation plan recommends Pear; we chose plain Node.js because Pear modules are explicitly described as potentially "unstable" and a 2-day window punishes ecosystem risk. Pear migration is captured as future work in `.cursor/rules/pear-runtime.mdc`.
-- **Hyperbee on Hypercore, not HyperDB.** Hyperbee is the simpler, more stable equivalent for our key-value workload. The `KvStore` interface keeps a future swap to HyperDB feasible.
+- **Hyperbee on Hypercore, not HyperDB.** `hyperdb@6.x` is a schema-first document database with codegen-driven definitions; our generic key-string → JSON-value workload doesn't benefit from the schema layer. We use Hyperbee directly (the engine HyperDB itself sits on for its `bee` backend) and keep a future HyperDB swap feasible behind the `KvStore` interface. Detailed reasoning + a runnable HyperDB awareness demo: see §2.4 and `apps/backend/scripts/hyperdb-demo/`.
 - **Single-writer Hyperbee, not multi-peer replication.** The MVP holds state in one Hyperbee instance on the backend. Multi-writer state via `corestore` and per-worker Hypercore feeds is captured under §6 Future Improvements.
 - **Public API key management endpoints** (`POST/GET/DELETE /v1/api-keys` are not Bearer-protected). Without this, the first key creation is impossible without an out-of-band admin token. Production hardening (admin token, mTLS, or signed-installer flow) is captured under §6.
 - **In-memory rate limiter.** `@fastify/rate-limit` v10 with the default in-memory store means rate counters reset on restart and are not shared across multiple backend replicas. For a single-instance demo this is fine. For production, swap the store to Redis or a Hyperbee-backed sliding window (counter would live at `usage/<keyId>/<windowStart>` which we already model).
