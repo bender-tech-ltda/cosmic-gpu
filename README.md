@@ -2,7 +2,12 @@
 
 # Cosmic — Distributed GPU Cloud Service
 
-[![CI Status](https://github.com/your-repo/cosmic/actions/workflows/ci.yml/badge.svg)](https://github.com/your-repo/cosmic/actions/workflows/ci.yml)
+[![CI Status](https://github.com/ileopoldes/cosmic-take-home/actions/workflows/ci.yml/badge.svg)](https://github.com/ileopoldes/cosmic-take-home/actions/workflows/ci.yml)
+[![Holepunch](https://img.shields.io/badge/Holepunch-P2P-1E90FF?logo=holepunch&logoColor=white)](https://holepunch.to/)
+[![Hyperswarm](https://img.shields.io/badge/Hyperswarm-Network-8A2BE2?logo=hive&logoColor=white)](https://github.com/holepunchto/hyperswarm)
+[![Hypercore](https://img.shields.io/badge/Hypercore-Protocol-4B0082?logo=dat&logoColor=white)](https://github.com/holepunchto/hypercore)
+[![Hyperbee](https://img.shields.io/badge/Hyperbee-Database-FF4500?logo=database&logoColor=white)](https://github.com/holepunchto/hyperbee)
+<br />
 [![Node.js](https://img.shields.io/badge/Node.js-22+-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
 [![Fastify](https://img.shields.io/badge/Fastify-000000?logo=fastify&logoColor=white)](https://fastify.dev/)
 [![React](https://img.shields.io/badge/React-20232A?logo=react&logoColor=61DAFB)](https://react.dev/)
@@ -83,18 +88,21 @@ For the architectural decisions, trade-offs, and scalability considerations, see
 ## Quick Start (Native)
 
 **1. Install dependencies**
+
 ```bash
 nvm use
 pnpm install
 ```
 
 **2. Configure environment**
+
 ```bash
 cp .env.example .env
 # (Optionally generate a real P2P topic and HMAC secret per comments in .env.example)
 ```
 
 **3. Run the apps (in separate terminals)**
+
 ```bash
 pnpm --filter @cosmic/backend dev
 pnpm --filter @cosmic/worker dev
@@ -102,6 +110,7 @@ pnpm --filter @cosmic/frontend dev
 ```
 
 **4. Visit the dashboard and API docs**
+
 ```bash
 open http://localhost:5173        # frontend
 open http://localhost:3000/docs   # OpenAPI / Swagger UI
@@ -112,17 +121,21 @@ open http://localhost:3000/docs   # OpenAPI / Swagger UI
 ## Quick Start (Docker Compose — Distributed Simulation)
 
 **1. Configure environment**
+
 ```bash
 cp .env.example .env
 ```
 
 **2. Start the swarm**
+
 ```bash
 pnpm compose:up         # docker compose up --build
 ```
+
 > 1 backend + 3 workers join the same Hyperswarm topic
 
 **3. Stop the swarm (when done)**
+
 ```bash
 pnpm compose:down       # docker compose down -v
 ```
@@ -142,11 +155,13 @@ The profile sets `P2P_BOOTSTRAP=dht:49737` for both backend and workers. You can
 With Compose up, exercise the full pipeline end-to-end:
 
 **1. Confirm the swarm formed**
+
 ```bash
 curl -s :3000/health | jq          # peers should be ≥ 1 within ~30s
 ```
 
 **2. Create an API key** (public for the take-home; see architecture.md §4)
+
 ```bash
 KEY=$(curl -s -X POST :3000/v1/api-keys \
   -H 'Content-Type: application/json' \
@@ -154,6 +169,7 @@ KEY=$(curl -s -X POST :3000/v1/api-keys \
 ```
 
 **3. Dispatch a non-streaming inference**
+
 ```bash
 curl -s -X POST :3000/v1/chat/completions \
   -H "Authorization: Bearer $KEY" \
