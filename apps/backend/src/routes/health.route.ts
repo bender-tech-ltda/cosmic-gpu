@@ -17,7 +17,8 @@ export const healthRoute: FastifyPluginAsyncTypebox = async (app) => {
       schema: {
         tags: ['Health'],
         summary: 'Liveness probe',
-        description: 'Reports backend uptime, P2P connection status, and version.',
+        description:
+          'Reports backend uptime, live P2P peer count, and version. Opt-out from rate limiting so health checks always succeed.',
         response: { 200: HealthResponse },
       },
     },

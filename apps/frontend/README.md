@@ -34,13 +34,15 @@ src/
 ## Scripts
 
 ```bash
-pnpm --filter @cosmic/frontend dev        # vite (port 5173)
-pnpm --filter @cosmic/frontend build      # tsc + vite build → dist/
-pnpm --filter @cosmic/frontend preview    # serve built bundle
-pnpm --filter @cosmic/frontend test       # vitest
+pnpm --filter @cosmic/frontend dev        # vite (port 5173) — placeholder until Step 9
+pnpm --filter @cosmic/frontend build      # currently `tsc --noEmit`; restored to `tsc -b && vite build → dist/` in Step 9
+pnpm --filter @cosmic/frontend preview    # serve built bundle (post-Step-9)
+pnpm --filter @cosmic/frontend test       # vitest (no test files until Step 10)
 pnpm --filter @cosmic/frontend lint
 pnpm --filter @cosmic/frontend typecheck
 ```
+
+> **Status (pre-Step-9).** The frontend package is scaffolded — deps installed, scripts wired, ESLint + Vitest + Tailwind config in place — but `src/` only contains a placeholder export so the workspace `pnpm build` stays green. The Vite + React entrypoint, routing, providers, and pages all land in Steps 9 + 10.
 
 ## Environment Variables
 

@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
-# Worker image — multi-stage, non-root. Until Step 5 the worker entrypoint is
-# a placeholder; once the Hyperswarm + RPC server lands the same image picks
-# up the real runtime via `apps/worker/dist/index.js`.
+# Worker image — multi-stage, non-root. The worker runtime entrypoint is
+# `apps/worker/dist/worker.js` (compiled from `src/worker.ts` with
+# `rootDir: ./src`).
 
 ARG NODE_IMAGE=node:22-bookworm-slim
 
@@ -32,6 +32,6 @@ COPY --from=build /repo /app
 RUN mkdir -p /data && chown -R node:node /data
 VOLUME ["/data"]
 USER node
-CMD ["node", "apps/worker/dist/src/worker.js"]
+CMD ["node", "apps/worker/dist/worker.js"]
 
 LABEL org.opencontainers.image.source="https://github.com/cosmic/cosmic-take-home"

@@ -63,6 +63,84 @@ All RPC payloads are Compact Encoded with codecs in `packages/shared/src/schemas
 
 The backend acts as a dispatcher (Step 6). Worker selection is least-in-flight with random tie-break, sourced from the local `WorkersState` accessor. Job state transitions are persisted in `JobsState` (`pending → dispatched → running → complete | failed`). A worker that misses a heartbeat for the configured TTL is soft-removed and any in-flight job is re-dispatched to another worker (non-streaming path) or surfaced to the client as an error event (streaming path).
 
+#### 2.6.1 Non-streaming inference sequence
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant B as Backend (Fastify)
+    participant J as JobsState (Hyperbee)
+    participant W as Worker (Hyperswarm RPC)
+
+    C->>B: POST /v1/chat/completions (Bearer key)
+    B->>B: auth.preHandler → rate-limit
+    B->>J: create(job, status=pending)
+    B->>B: select worker (least-in-flight)
+    B->>J: transition(status=dispatched)
+    B->>W: rpc.request("inference.run", InferenceRequest)
+    B->>J: transition(status=running)
+    W-->>B: InferenceResponseFinal { promptTokens, completionTokens, text }
+    B->>J: transition(status=complete, tokensIn/out)
+    B->>B: usage.incrementCounter (best-effort)
+    B->>B: metrics.record(success, tokens, latency)
+    B-->>C: 200 ChatCompletion (OpenAI shape)
+```
+
+#### 2.6.2 Streaming inference sequence (with client-disconnect cancellation)
+
+Streaming uses a Protomux substream (`cosmic/inference-stream/v1`) over the encrypted Hyperswarm secret stream (§2.3). Cancellation propagates by closing the channel.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant B as Backend
+    participant T as StreamTransport (Protomux)
+    participant W as Worker (stream-channel)
+
+    C->>B: POST /v1/chat/completions {stream:true}
+    B->>B: auth.preHandler → rate-limit
+    B->>B: reply.hijack() → SSE headers
+    B->>T: openStream(workerPubKey, request, signal)
+    T->>W: protomux channel open + framed InferenceRequest
+    loop generator yields
+        W-->>T: InferenceResponseChunk { delta }
+        T-->>B: chunk frame
+        B-->>C: data: ChatCompletionChunk\n\n
+    end
+    alt happy path
+        W-->>T: InferenceResponseFinal { finishReason: stop|length }
+        T-->>B: final frame
+        B-->>C: data: ChatCompletionChunk { finish_reason }\n\n
+        B-->>C: data: [DONE]\n\n
+    else client disconnects mid-stream
+        C--xB: socket close
+        B->>T: AbortController.abort()
+        T->>W: channel close
+        W-->>T: finishReason: "cancelled"
+        B->>B: metrics.record(cancelled)
+        B-->>C: (best-effort) data: [DONE]\n\n
+    end
+```
+
+#### 2.6.3 Job lifecycle state machine
+
+`JobsState.transition(...)` (`apps/backend/src/state/jobs.state.ts`) enforces the following state machine.
+
+```mermaid
+stateDiagram-v2
+    [*] --> pending: create()
+    pending --> dispatched: worker selected
+    dispatched --> running: rpc started / stream opened
+    running --> complete: final envelope received
+    pending --> failed: no workers available
+    dispatched --> failed: rpc / stream error
+    running --> failed: worker crash, abort, retries exhausted
+    complete --> [*]
+    failed --> [*]
+```
+
 ## 3. Failure Scenarios and Resilience
 
 | Scenario                         | Response                                                                                                                                                                                                                                                                                                 |

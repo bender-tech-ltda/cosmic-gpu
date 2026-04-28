@@ -3,10 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "main": "./dist/src/worker.js",
+  "main": "./dist/worker.js",
   "scripts": {
     "dev": "tsx watch src/worker.ts",
-    "start": "node dist/src/worker.js",
+    "start": "node dist/worker.js",
     "build": "tsc -p tsconfig.json",
     "test": "vitest --passWithNoTests",
     "lint": "eslint --no-error-on-unmatched-pattern src",

@@ -15,20 +15,27 @@ Per [`p2p-architecture.mdc`](../../.cursor/rules/p2p-architecture.mdc), Compact 
 
 ```
 src/
-├── schemas/        # Compact Encoding schemas (RPC payloads)
-│   ├── inference-request.schema.ts
-│   ├── inference-response.schema.ts
-│   └── worker-health.schema.ts
+├── schemas/        # Compact Encoding codecs (RPC payloads)
+│   ├── codec.helpers.ts            # defineObject / array / optional / taggedUnion
+│   ├── inference-request.schema.ts # inferenceRequestCodec
+│   ├── inference-response.schema.ts# inferenceResponseCodec (chunk | final tagged union)
+│   └── worker-health.schema.ts     # workerHealthCodec
 ├── dto/            # TypeBox / TypeScript DTOs (HTTP payloads)
 │   ├── api-key.dto.ts
 │   ├── chat-completion.dto.ts
+│   ├── error.dto.ts
+│   ├── health.dto.ts
+│   ├── metrics.dto.ts
+│   ├── model.dto.ts
 │   └── usage.dto.ts
-├── constants/      # Topics, prefixes, defaults
-│   ├── topics.constants.ts
-│   └── http.constants.ts
+├── constants/      # Topics, HTTP, RPC method names, Hyperbee key prefixes
+│   ├── http.constants.ts
+│   ├── hyperdb-keys.constants.ts   # HYPERDB_PREFIX (api-keys/, workers/, jobs/, usage/)
+│   ├── rpc.constants.ts            # RPC_METHOD names
+│   └── topics.constants.ts         # DEFAULT_DISCOVERY_TOPIC + decodeDiscoveryTopic
 ├── errors/         # Shared error codes
-│   └── error-codes.constants.ts
-└── index.ts        # Barrel export
+│   └── error-codes.constants.ts    # ERROR_CODE union
+└── index.ts        # Top-level barrel
 ```
 
 ## Authoring Rules
@@ -40,9 +47,11 @@ src/
 ## Consumers
 
 ```ts path=null start=null
-import { CHAT_COMPLETION_REQUEST_SCHEMA } from '@cosmic/shared/schemas';
-import { ChatCompletionRequest } from '@cosmic/shared/dto';
-import { GPU_DISCOVERY_TOPIC } from '@cosmic/shared/constants';
+import { inferenceRequestCodec, inferenceResponseCodec } from '@cosmic/shared/schemas';
+import { ChatCompletionRequest, MetricsResponse } from '@cosmic/shared/dto';
+import { DEFAULT_DISCOVERY_TOPIC, RPC_METHOD } from '@cosmic/shared/constants';
+// or, from the top-level barrel (errors are only re-exported here):
+import { ERROR_CODE } from '@cosmic/shared';
 ```
 
 ## Scripts

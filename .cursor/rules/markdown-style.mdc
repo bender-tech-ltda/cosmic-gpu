@@ -1,0 +1,108 @@
+---
+description: Markdown authoring standard for repository docs (READMEs, architecture, plans). Defines spacing, structure, and when to use Mermaid diagrams.
+globs:
+  - "**/*.md"
+alwaysApply: true
+---
+
+# Markdown Style
+
+This rule applies to **every `.md` file in the repository** (root README, app/package READMEs, `docs/`, etc.). The intent is to keep our documentation visually consistent and reviewer-friendly. **`.cursor/rules/*.mdc` files are exempt** from these spacing rules — they follow Cursor's own front-matter conventions.
+
+## 1. Spacing and Structure
+
+- One sentence per concept. Prefer short paragraphs over walls of text.
+- **One blank line** between every heading and the content below it.
+- **One blank line** between every paragraph, list, table, and fenced code block.
+- **One blank line** before and after every fenced code block (this includes Mermaid blocks). Prettier enforces this.
+- **One blank line** between adjacent sections (`##` siblings) for visual separation.
+- Do **not** stack multiple blank lines (Prettier collapses them to one).
+- Do **not** place text immediately under an `H1` without a one-line summary first; lead with intent.
+- Bullet lists: use `-` (not `*` or `+`); keep one bullet per line; never indent without nesting.
+- Tables: surround with one blank line above and below; align pipes for readability when the table is small enough.
+- File / symbol references inline as `inline code`. Use the path/file:line convention from `coding-standards.mdc` when pointing to a specific location.
+
+## 2. Headings
+
+- A `.md` document has exactly **one** `H1` (the title).
+- Never skip levels (no `H1` followed by `H3`).
+- Headings should be sentence case, not title case (`## Quick start`, not `## Quick Start`) — except brand names (`Hyperswarm`, `OpenAPI`).
+- Trailing punctuation on headings is forbidden.
+
+## 3. Code Blocks
+
+- Always include a language identifier: `bash`, `ts`, `json`, `mermaid`, `text`, `yaml`, etc.
+- For shell commands, use `bash` even on zsh-only snippets.
+- Inline expected output as a separate block, labelled with `text` or `json`.
+- For multi-step commands, prefer numbered steps with one block per step rather than chaining everything in one block.
+
+## 4. Mermaid Diagrams
+
+A diagram is **required** whenever any of the following are true:
+
+- The document explains a **system architecture** (component layout, data flow, transport split).
+- The document describes a **request lifecycle**, **message exchange**, or **protocol** that crosses two or more processes.
+- The document describes a **state machine**, **enum-driven workflow**, or **lifecycle** with three or more states.
+- Two paragraphs of prose would otherwise be needed to explain something a single diagram can convey at a glance.
+
+When in doubt, prefer a diagram. The reviewer should be able to skim the document and grasp the architecture from diagrams alone.
+
+### 4.1 Diagram type cheat sheet
+
+- **`flowchart TD`** — components, modules, data flow, layered architecture.
+- **`sequenceDiagram`** — request/response timing, RPC interactions, streaming protocols. Always add `autonumber`.
+- **`stateDiagram-v2`** — lifecycles (job state, key state, connection state).
+- **`classDiagram`** — only when documenting public APIs / inheritance; rarely needed.
+- **`erDiagram`** — Hyperbee key namespaces or relational mappings.
+
+### 4.2 Mermaid authoring rules
+
+- Wrap every diagram in a fenced code block with the `mermaid` language identifier.
+- Keep each diagram under ~30 lines. If a diagram grows beyond that, split it into two.
+- Use **short labels** in shapes (≤4 words). Move detail into the prose surrounding the diagram.
+- Sequence diagrams: declare every participant up front with a single-letter alias (`participant B as Backend`); use the alias in messages.
+- State diagrams: name every transition; never leave an arrow unlabelled.
+- Avoid colors and styling — leave defaults so GitHub's renderer stays clean.
+- Reference one diagram per section; never embed two consecutive diagrams without prose between them.
+
+### 4.3 Example
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant B as Backend
+    participant W as Worker
+
+    C->>B: POST /v1/chat/completions
+    B->>W: rpc.request("inference.run")
+    W-->>B: InferenceResponseFinal
+    B-->>C: 200 ChatCompletion
+```
+
+## 5. Document Skeleton
+
+Every README under `apps/*` or `packages/*` should follow this skeleton:
+
+1. `H1` with the package name and one-sentence purpose.
+2. **Responsibilities** — bullet list, ≤7 items.
+3. **Architecture diagram** — Mermaid `flowchart TD` showing where this package sits relative to its peers, when applicable.
+4. **Project structure** — fenced `text` block with the `src/` tree and one-line annotations.
+5. **Scripts** — fenced `bash` block listing common commands.
+6. **Environment variables** — table or link to `.env.example`.
+7. **Related rules** — bullet list linking back to `.cursor/rules/*.mdc` files.
+
+`docs/architecture.md` follows a different (longer) skeleton — see the file itself for the canonical structure.
+
+## 6. Cross-document Conventions
+
+- Always link to other markdown documents using **relative paths** (`./architecture.md`, not `https://...`).
+- When citing source code, use the `path/file:line` convention from `coding-standards.mdc`.
+- When listing trade-offs, link to the canonical entry in `docs/architecture.md` §4 instead of duplicating prose.
+- When listing future improvements, link to `docs/architecture.md` §6 instead of duplicating prose.
+
+## 7. Enforcement
+
+- `pnpm format:check` (Prettier) enforces the spacing rules on every PR via CI.
+- The AI assistant **must** add or update Mermaid diagrams whenever it adds a new architectural concept (transport, lifecycle, integration point) per §4.
+- The reviewer is allowed to reject documentation PRs that lack a diagram for a system / lifecycle / protocol explanation.

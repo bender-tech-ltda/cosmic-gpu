@@ -11,12 +11,13 @@
   "scripts": {
     "dev": "pnpm -r --parallel --stream dev",
     "build": "pnpm -r build",
+    "build:shared": "pnpm --filter @cosmic/shared build",
     "test": "vitest",
-    "test:run": "vitest run",
+    "test:run": "pnpm build:shared && vitest run",
     "lint": "eslint .",
     "format": "prettier --write \"**/*.{ts,tsx,json,md,yml,yaml}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,json,md,yml,yaml}\"",
-    "typecheck": "pnpm -r typecheck",
+    "typecheck": "pnpm build:shared && pnpm -r typecheck",
     "clean": "pnpm -r clean && rm -rf node_modules",
     "compose:up": "docker compose up --build",
     "compose:down": "docker compose down -v"
