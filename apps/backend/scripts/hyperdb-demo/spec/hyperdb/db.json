@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "offset": 0,
+  "schema": [
+    {
+      "name": "kv",
+      "namespace": "cosmic",
+      "id": 0,
+      "type": 1,
+      "version": 1,
+      "versionField": null,
+      "indexes": [],
+      "schema": "@cosmic/kv",
+      "derived": false,
+      "key": [
+        "key"
+      ],
+      "trigger": null
+    }
+  ]
+}

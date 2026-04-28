@@ -11,7 +11,8 @@
     "test": "vitest --passWithNoTests",
     "lint": "eslint --no-error-on-unmatched-pattern src",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "demo:hyperdb": "node scripts/hyperdb-demo/run.mjs"
   },
   "dependencies": {
     "@cosmic/shared": "workspace:*",
@@ -23,11 +24,11 @@
     "@fastify/type-provider-typebox": "^6.0.0",
     "@hyperswarm/rpc": "^3.4.0",
     "@sinclair/typebox": "^0.34.0",
+    "b4a": "^1.6.0",
     "compact-encoding": "^3.0.0",
     "envalid": "^8.0.0",
     "fastify": "^5.0.0",
     "fastify-plugin": "^5.0.0",
-    "b4a": "^1.6.0",
     "hyperbee": "^2.27.0",
     "hypercore": "^11.0.0",
     "hyperdht": "^6.30.0",
@@ -36,6 +37,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.7.0",
+    "hyperdb": "^6.6.1",
+    "hyperschema": "^1.20.1",
     "pino-pretty": "^11.2.0",
     "tsx": "^4.19.0",
     "typescript": "^5.6.0",
