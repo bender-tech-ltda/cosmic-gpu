@@ -59,6 +59,7 @@ interface DhtLike {
     options?: { keyPair?: { publicKey: Buffer; secretKey: Buffer } },
   ): NodeJS.ReadWriteStream & {
     once(event: 'open' | 'error' | 'close', cb: (err?: Error) => void): unknown;
+    on(event: 'error' | 'close', cb: (err?: Error) => void): unknown;
     destroy(err?: Error): void;
   };
 }
@@ -86,6 +87,16 @@ async function* openOne(
 ): AsyncIterable<InferenceResponse> {
   const stream = dht.connect(workerPubKey, {
     keyPair: { publicKey: identity.publicKey, secretKey: identity.secretKey },
+  });
+
+  // Long-lived `'error'` handler so a mid-stream failure (peer reset,
+  // timeout) doesn't terminate the process. The handshake-only `once`
+  // listener below detaches itself; this one stays for the stream's life.
+  // We mark the iterator as closed via the same wake mechanism used by
+  // `onClose`, so the consumer sees an orderly end instead of a crash.
+  let streamFailed: Error | null = null;
+  stream.on('error', (err?: Error) => {
+    streamFailed = err ?? new Error('stream error');
   });
 
   await new Promise<void>((resolve, reject) => {
@@ -145,6 +156,7 @@ async function* openOne(
     requestMessage.send(request);
 
     while (!closed) {
+      if (streamFailed !== null) throw streamFailed;
       if (queue.length > 0) {
         const next = queue.shift() as InferenceResponse;
         yield next;
@@ -155,6 +167,7 @@ async function* openOne(
         });
       }
     }
+    if (streamFailed !== null) throw streamFailed;
   } finally {
     signal?.removeEventListener('abort', onAbort);
     try {

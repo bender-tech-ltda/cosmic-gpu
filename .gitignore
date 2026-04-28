@@ -47,3 +47,7 @@ pnpm-debug.log*
 # personal scratch space and should not be part of the repository.
 .cursor/originals/
 .cursor/plans/
+
+# Playwright E2E artefacts (HTML report + traces / screenshots / videos)
+playwright-report/
+test-results/

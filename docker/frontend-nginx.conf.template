@@ -1,0 +1,54 @@
+# Rendered by nginx's `docker-entrypoint.d/20-envsubst-on-templates.sh` at
+# container start; `${BACKEND_UPSTREAM}` is substituted from the env.
+
+server {
+  listen 80;
+  server_name _;
+
+  root /usr/share/nginx/html;
+  index index.html;
+
+  # Reverse-proxy the backend endpoints so the SPA can call same-origin URLs
+  # (mirrors the dev-time Vite proxy). SSE works because we disable buffering
+  # on the chat-completions branch.
+  location /v1 {
+    proxy_pass http://${BACKEND_UPSTREAM};
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 5m;
+  }
+
+  location = /health {
+    proxy_pass http://${BACKEND_UPSTREAM};
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+  }
+
+  location = /metrics {
+    proxy_pass http://${BACKEND_UPSTREAM};
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+  }
+
+  location /docs {
+    proxy_pass http://${BACKEND_UPSTREAM};
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+  }
+
+  # Long-cache hashed assets emitted by Vite.
+  location ~* \.(?:js|css|svg|woff2?|ttf|eot|png|jpg|jpeg|gif|webp)$ {
+    expires 1d;
+    add_header Cache-Control "public, max-age=86400, immutable";
+  }
+
+  # SPA fallback: any unmatched path falls through to /index.html so React
+  # Router takes over client-side routing.
+  location / {
+    try_files $uri $uri/ /index.html;
+  }
+}

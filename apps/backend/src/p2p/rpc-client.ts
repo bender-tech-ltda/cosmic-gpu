@@ -23,14 +23,15 @@ export interface RpcClient {
 
 export interface RpcClientDeps {
   identity: NodeIdentity;
-  /** Reuse the swarm's DHT so we don't open a second one. */
-  dht: unknown;
 }
 
 export function createRpcClient(deps: RpcClientDeps): RpcClient {
+  // Per `@hyperswarm/rpc` docs, `dht` "defaults to a new instance." We let
+  // RPC build its own DHT rather than sharing the swarm's: shared-DHT mode
+  // requires us to keep keypairs distinct between subsystems, which the
+  // backend's single identity-keypair design doesn't satisfy.
   const rpc = new HyperswarmRPC({
     keyPair: { publicKey: deps.identity.publicKey, secretKey: deps.identity.secretKey },
-    dht: deps.dht,
   });
 
   return {

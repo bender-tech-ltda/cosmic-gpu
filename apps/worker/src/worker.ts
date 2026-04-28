@@ -7,6 +7,7 @@
 import { loadConfig } from './config/env.config.js';
 import { runInference } from './handlers/inference.handler.js';
 import { WORKER_AUDIT_EVENT, buildLogger, logEvent } from './observability/logger.js';
+import { installP2pErrorGuards } from './runtime/error-guards.js';
 import { loadOrGenerateIdentity } from './runtime/identity.js';
 import { startRpcServer } from './runtime/rpc-server.js';
 import { attachStreamChannelServer } from './runtime/stream-channel.js';
@@ -16,6 +17,10 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const log = buildLogger(config);
   const startedAt = Date.now();
+
+  // Top-level guard for stream-level peer errors that escape per-stream
+  // handlers. See `runtime/error-guards.ts` for the rationale.
+  installP2pErrorGuards(log);
 
   log.info(
     { node: process.version, model: config.WORKER_MODEL_ID, capacity: config.WORKER_CAPACITY },
@@ -54,7 +59,6 @@ async function main(): Promise<void> {
   const rpcHandle = await startRpcServer({
     identity,
     log,
-    dht: swarmHandle.swarm.dht,
     health: {
       workerId: config.WORKER_ID,
       workerPubKey: identity.publicKeyHex,

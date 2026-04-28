@@ -29,7 +29,7 @@
     "test": "vitest --passWithNoTests",
     "lint": "eslint --no-error-on-unmatched-pattern src",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist tsconfig.tsbuildinfo"
   },
   "dependencies": {
     "@sinclair/typebox": "^0.34.0",

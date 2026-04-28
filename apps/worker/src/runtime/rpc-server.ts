@@ -36,14 +36,17 @@ export interface RpcServerDeps {
   health: WorkerHealthDeps;
   /** Source of the inference.run handler. */
   inference: InferenceHandlerDeps;
-  /** Reuse the swarm's DHT instance to avoid spinning up a second one. */
-  dht: unknown;
 }
 
 export async function startRpcServer(deps: RpcServerDeps): Promise<RpcServerHandle> {
+  // Per `@hyperswarm/rpc` docs, the `dht` option "defaults to a new
+  // instance." We deliberately let RPC build its own DHT (rather than
+  // reusing the swarm's): HyperDHT enforces "one listener per keypair per
+  // DHT instance", and our swarm already calls `dht.createServer().listen(
+  // identity)` via `swarm.join({ server: true })`. Reusing the same DHT
+  // would cause `KEYPAIR_ALREADY_USED`.
   const rpc = new HyperswarmRPC({
     keyPair: { publicKey: deps.identity.publicKey, secretKey: deps.identity.secretKey },
-    dht: deps.dht,
   });
 
   const server = rpc.createServer();

@@ -115,6 +115,22 @@ services:
     networks: [cosmic-net]
     restart: unless-stopped
 
+  # Vite-built React SPA served by nginx. Reverse-proxies `/v1`, `/health`,
+  # `/metrics`, and `/docs` to the backend service so the bundle uses
+  # same-origin URLs (matches the dev-time Vite proxy).
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend.Dockerfile
+    image: cosmic/frontend:dev
+    environment:
+      BACKEND_UPSTREAM: backend:3000
+    ports:
+      - '5173:80'
+    networks: [cosmic-net]
+    depends_on: [backend]
+    restart: unless-stopped
+
 networks:
   cosmic-net:
     driver: bridge
