@@ -30,7 +30,7 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
       - name: Test
-        run: pnpm -r test --run
+        run: pnpm test:run
       - name: Build
         run: pnpm build
       - name: Prettier check
