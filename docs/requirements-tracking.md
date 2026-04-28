@@ -240,3 +240,13 @@ Merged correction pass driven by [`.cursor/plans/llm-verdict-evaluation.md`](../
 - **P2P bootstrap**: `bootstrapP2p` late-binds the worker gauges so `MetricsRegistry.snapshot().workers.{connected, capacity}` reflects the live registry.
 - **Tests**: 17 new across `observability/metrics.test.ts` (8), `routes/metrics.route.test.ts` (6 — `/metrics` zero / observed / no-rate-limit + `/v1/usage/me` 401 / aggregated / empty), `p2p/dispatcher.test.ts` (3 metrics observation paths). Existing `plugins/rate-limit.plugin.test.ts` 429 test asserts the metrics counter increments. Total now **153 / 153** (was 136).
 - **Out of scope**: Prometheus exposition, frontend dashboard polling, persistence of counters across restarts. All three captured in `docs/architecture.md` §6.
+
+### Step 8.5 — HyperDB awareness
+
+The brief explicitly names HyperDB. We evaluated `hyperdb@6.x` against the `KvStore` interface and concluded it is the wrong tool for our generic key-string → JSON-value workload (schema-first document DB with codegen-driven definitions, collection-scoped `db.insert / get / find` API, mandatory `db.flush()`). Hyperbee — the engine HyperDB itself sits on for its `bee` backend — stays the production K/V layer.
+
+- **Awareness demo** (`apps/backend/scripts/hyperdb-demo/`): one-time spec generator (`build-spec.cjs`), the generated `spec/` (committed: hyperschema + hyperdb output), and a runnable `run.mjs` that opens a temp Hypercore, wraps it in `HyperDB.bee(core, definition, { autoUpdate: true })`, exercises insert / get / find / delete / flush, and cleans up. Wired into the backend as `pnpm --filter @cosmic/backend demo:hyperdb`.
+- **Dependencies**: `hyperdb` and `hyperschema` added as **devDependencies** of `@cosmic/backend` (used only by the demo, not the runtime).
+- **Architecture doc**: §2.4 gains a "HyperDB vs Hyperbee — why we chose Hyperbee" subsection covering the API surface, the substrate equivalence, and the future-migration path. The trade-off in §4 cross-links the demo.
+- **No changes to the runtime state layer**: `STATE_BACKEND` still accepts `memory` and `hyperbee`; the existing 153 tests are unaffected.
+- **No new tests** here — the demo _is_ the test (it asserts behaviour by running end-to-end and printing real records).
