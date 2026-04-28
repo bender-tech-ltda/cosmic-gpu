@@ -4,7 +4,12 @@
 // totals + a sorted (newest first) `windows[]`. The cap on history makes the
 // JSON small enough for the dashboard to poll every few seconds.
 
-import { ERROR_CODE, UsageSummary, type UsageSummary as UsageSummaryType } from '@cosmic/shared';
+import {
+  ApiErrorBody,
+  ERROR_CODE,
+  UsageSummary,
+  type UsageSummary as UsageSummaryType,
+} from '@cosmic/shared';
 import type { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
 
 import { DomainError } from '../errors/domain-error.js';
@@ -20,8 +25,14 @@ export const usageRoute: FastifyPluginAsyncTypebox = async (app) => {
         tags: ['Usage'],
         summary: 'Per-API-key usage summary for the caller',
         description:
-          'Returns totals (requests / promptTokens / completionTokens) plus the most recent windows (default capped at 24).',
-        response: { 200: UsageSummary },
+          'Returns totals (`requests` / `promptTokens` / `completionTokens`) plus the most recent windows sorted newest-first (default capped at 24). Powers the dashboard poll — typically refreshed every 5 seconds by the frontend.',
+        security: [{ apiKey: [] }],
+        response: {
+          200: UsageSummary,
+          401: ApiErrorBody,
+          403: ApiErrorBody,
+          429: ApiErrorBody,
+        },
       },
     },
     async (request): Promise<UsageSummaryType> => {

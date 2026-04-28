@@ -9,7 +9,7 @@ A Hyperswarm peer that registers as a "GPU worker" and serves inference requests
 - Expose **RPC methods** to the backend dispatcher (Compact Encoding payloads from `@cosmic/shared`):
   - `inference.run(req)` — non-streaming completion (`@hyperswarm/rpc`).
   - `worker.health()` — capacity, in-flight count, uptime, model id (`@hyperswarm/rpc`).
-  - `inference.stream(req)` — token-by-token streaming. The handler is implemented and unit-tested today; the **Protomux substream binding** that carries it lands with the streaming SSE bridge in Step 7. See [`docs/architecture.md`](../../docs/architecture.md) §2.3.
+  - `inference.stream(req)` — token-by-token streaming over a **Protomux substream** (`cosmic/inference-stream/v1`) attached to the encrypted Hyperswarm secret stream. Cancellation propagates by closing the channel; the worker generator observes it and emits `finishReason: 'cancelled'`. See [`docs/architecture.md`](../../docs/architecture.md) §2.3 + §3 (failure scenarios).
 - Drive the synthetic token generator (mock LLM) deterministically per `jobId`.
 - Increment / decrement an **in-flight counter** so `worker.health` advertises live load. The backend polls `worker.health`; **no worker-initiated heartbeat timer** — keeps moving state minimal.
 
@@ -20,10 +20,10 @@ src/
 ├── config/         # envalid loader → typed WorkerConfig
 ├── handlers/       # runInference, streamInference, buildHealthSnapshot
 ├── observability/  # Pino logger + WORKER_AUDIT_EVENT helper
-├── runtime/        # identity (seed-derived keypair), swarm.ts, rpc-server.ts
+├── runtime/        # identity, swarm, rpc-server, stream-channel (Protomux)
 ├── simulator/      # Mock LLM (deterministic, AbortSignal-aware)
-├── types/          # Ambient declarations for hyperdht/hyperswarm/@hyperswarm/rpc
-└── worker.ts       # Entrypoint (config → identity → swarm → RPC → shutdown)
+├── types/          # Ambient declarations for hyperdht/hyperswarm/@hyperswarm/rpc/protomux
+└── worker.ts       # Entrypoint (config → identity → swarm → RPC + stream → shutdown)
 ```
 
 ## Mock LLM Behavior

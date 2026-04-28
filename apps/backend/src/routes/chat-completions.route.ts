@@ -6,11 +6,13 @@
 // endpoint table and `docs/architecture.md` §2.3.
 
 import {
+  ApiErrorBody,
+  ChatCompletion,
   ChatCompletionRequest,
   ERROR_CODE,
   SSE_CONTENT_TYPE,
   SSE_DONE_MARKER,
-  type ApiErrorBody,
+  type ApiErrorBody as ApiErrorBodyType,
   type ChatCompletionChunk,
   type InferenceResponseChunk,
   type InferenceResponseFinal,
@@ -36,14 +38,29 @@ export const chatCompletionsRoute: FastifyPluginAsyncTypebox = async (app) => {
       schema: {
         tags: ['Inference'],
         summary: 'Create a chat completion (OpenAI-compatible)',
-        description:
-          'Dispatches an inference request to an available worker via Hyperswarm RPC. With `stream: false` (default) returns an OpenAI-shaped `ChatCompletion`; with `stream: true` returns `text/event-stream` with `data: {ChatCompletionChunk}\n\n` events terminated by `data: [DONE]\n\n`.',
+        description: [
+          'Dispatches an inference request to an available worker via Hyperswarm RPC.',
+          '',
+          '**Non-streaming (`stream: false`, default).** Returns the full `ChatCompletion` envelope once the worker emits its `final` frame.',
+          '',
+          '**Streaming (`stream: true`).** Returns `text/event-stream` with `data: {ChatCompletionChunk}\\n\\n` events terminated by `data: [DONE]\\n\\n`. Mid-stream errors emit a final `data: { error: ApiErrorBody }\\n\\n` before the terminator. Closing the connection cancels the worker generator.',
+          '',
+          'Backed by a least-in-flight dispatcher with one retry on RPC failure (non-streaming only). See `docs/architecture.md` §2.6 + §3.',
+        ].join('\n'),
+        security: [{ apiKey: [] }],
         body: ChatCompletionRequest,
-        // Response schema is intentionally omitted: when `stream: true` the
-        // handler hijacks the reply and writes SSE directly, which would
-        // conflict with the TypeBox response validator. Non-streaming
-        // responses still match the `ChatCompletion` shape — see
-        // `apps/backend/src/p2p/dispatcher.ts` for the mapping.
+        // Note: when `stream: true` the handler hijacks the reply and writes
+        // SSE directly. We declare the non-streaming `200` response shape
+        // here so OpenAPI documents it and Fastify validates it; the
+        // streaming path bypasses TypeBox response validation by design.
+        response: {
+          200: ChatCompletion,
+          400: ApiErrorBody,
+          401: ApiErrorBody,
+          403: ApiErrorBody,
+          429: ApiErrorBody,
+          503: ApiErrorBody,
+        },
       },
     },
     async (request, reply) => {
@@ -186,7 +203,7 @@ function mapFinalChunk(
   };
 }
 
-function errorEnvelope(err: unknown, requestId: string): ApiErrorBody {
+function errorEnvelope(err: unknown, requestId: string): ApiErrorBodyType {
   if (isDomainError(err)) {
     return {
       statusCode: err.statusCode,

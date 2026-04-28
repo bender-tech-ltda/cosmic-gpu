@@ -26,7 +26,8 @@ export const modelsRoute: FastifyPluginAsyncTypebox = async (app) => {
       schema: {
         tags: ['Models'],
         summary: 'List available models',
-        description: 'Returns the models served by the connected worker pool.',
+        description:
+          'Returns the models served by the connected worker pool. Falls back to the hardcoded `mock-llm` entry when no workers are connected (e.g. before swarm warm-up). Opt-out from rate limiting per the OpenAI compatibility convention.',
         response: { 200: ListModelsResponse },
       },
     },

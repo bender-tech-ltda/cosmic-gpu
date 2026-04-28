@@ -22,10 +22,15 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Lint
         run: pnpm lint
+      # `@cosmic/shared`'s `package.json` `main`/`types`/`exports` point to
+      # `./dist/...`, so downstream typecheck and Vitest cannot resolve
+      # types on a fresh checkout until shared has been built once.
+      - name: Build shared (for downstream type resolution)
+        run: pnpm build:shared
       - name: Typecheck
         run: pnpm typecheck
       - name: Test
-        run: pnpm -r test --run
+        run: pnpm test:run
       - name: Build
         run: pnpm build
       - name: Prettier check
