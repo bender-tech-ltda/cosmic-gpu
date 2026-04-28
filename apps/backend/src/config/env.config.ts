@@ -49,7 +49,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BackendConfig 
       default: 'info',
     }),
     BACKEND_BODY_LIMIT_BYTES: num({ default: 1_048_576 }),
-    FRONTEND_ORIGIN: str({ default: 'http://localhost:5173' }),
+    // Comma-separated allow-list of frontend origins. Defaults cover the
+    // canonical Vite port (5173) plus the fallback Vite picks when 5173
+    // is occupied (5174) — useful when a developer accidentally runs two
+    // dev servers in parallel. Set a single entry in production.
+    FRONTEND_ORIGIN: str({ default: 'http://localhost:5173,http://localhost:5174' }),
     RATE_LIMIT_RPM: num({ default: 60 }),
     // Required in real deployments. We tolerate a placeholder in dev/tests so
     // `pnpm dev` and Vitest don't blow up before the user generates a real one.

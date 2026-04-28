@@ -58,7 +58,7 @@ test.describe('API keys page', () => {
 
     // Empty submission is rejected (button stays disabled).
     await expect(useBtn).toBeDisabled();
-    await input.fill('sk-PASTED-FROM-CURL-1234');
+    await input.fill('sk-PASTEDFROMCURL12345678');
     await expect(useBtn).toBeEnabled();
     await useBtn.click();
 
@@ -72,6 +72,25 @@ test.describe('API keys page', () => {
 
     // Clearing the active key hides the pill again.
     await page.getByRole('button', { name: /Clear active key/i }).click();
+    await expect(page.getByTestId('active-key-pill')).toBeHidden();
+  });
+
+  test('rejects a malformed key (leading dash) without setting active', async ({ page }) => {
+    await mockBackend(page, { keys: [] });
+    await page.goto('/keys');
+
+    const input = page.getByTestId('existing-key-input');
+    const useBtn = page.getByRole('button', { name: /Use this key/i });
+
+    // The exact value from the bug report — a leading `- ` survived a
+    // markdown / shell paste.
+    await input.fill('- sk-xcIVRwnEqWtwcGUd5L40mL4YtUOYTuERmEhbvQj7m8Q');
+    await expect(useBtn).toBeEnabled();
+    await useBtn.click();
+
+    // Validation rejects: inline error appears; pill stays hidden; field
+    // keeps the bad value so the user can edit it.
+    await expect(page.getByTestId('existing-key-error')).toBeVisible();
     await expect(page.getByTestId('active-key-pill')).toBeHidden();
   });
 });

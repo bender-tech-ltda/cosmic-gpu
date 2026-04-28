@@ -32,6 +32,7 @@ export default function KeysPage(): JSX.Element {
   const [newKeyName, setNewKeyName] = useState('');
   const [createdKey, setCreatedKey] = useState<ApiKeyCreatedResponse | null>(null);
   const [pastedKey, setPastedKey] = useState('');
+  const [pasteError, setPasteError] = useState<string | null>(null);
 
   const onCreate = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
     e.preventDefault();
@@ -71,10 +72,25 @@ export default function KeysPage(): JSX.Element {
 
   const onClearActive = (): void => setActiveApiKey(null);
 
+  // Strict format validation matches the backend: `sk-` followed by base64url
+  // characters. Rejects values that contain whitespace or stray decoration
+  // (e.g. a leading bullet or quote that survived a paste from a markdown
+  // list / shell prompt). Without this guard the frontend silently sends
+  // a malformed `Authorization: Bearer ...` header that the backend
+  // rejects with `ApiKeyInvalid`.
+  const API_KEY_FORMAT = /^sk-[A-Za-z0-9_-]{16,}$/;
+
   const onUseExistingKey = (e: FormEvent<HTMLFormElement>): void => {
     e.preventDefault();
     const trimmed = pastedKey.trim();
     if (trimmed.length === 0) return;
+    if (!API_KEY_FORMAT.test(trimmed)) {
+      setPasteError(
+        'That doesn\u2019t look like a valid key. Expected format: `sk-` followed by 16+ base64url characters (no spaces or punctuation).',
+      );
+      return;
+    }
+    setPasteError(null);
     setActiveApiKey(trimmed);
     setPastedKey('');
   };
@@ -163,10 +179,19 @@ export default function KeysPage(): JSX.Element {
               autoComplete="off"
               spellCheck={false}
               value={pastedKey}
-              onChange={(e) => setPastedKey(e.target.value)}
+              onChange={(e) => {
+                setPastedKey(e.target.value);
+                if (pasteError !== null) setPasteError(null);
+              }}
               placeholder="sk-…"
-              className="w-full rounded border border-slate-300 bg-white px-2 py-1.5 font-mono text-sm text-slate-900 focus:border-slate-500 focus:outline-none"
+              className={[
+                'w-full rounded border bg-white px-2 py-1.5 font-mono text-sm text-slate-900 focus:outline-none',
+                pasteError !== null
+                  ? 'border-red-300 focus:border-red-500'
+                  : 'border-slate-300 focus:border-slate-500',
+              ].join(' ')}
               data-testid="existing-key-input"
+              aria-invalid={pasteError !== null}
             />
           </label>
           <Button type="submit" disabled={pastedKey.trim().length === 0}>
@@ -178,6 +203,11 @@ export default function KeysPage(): JSX.Element {
             </Button>
           )}
         </form>
+        {pasteError !== null && (
+          <p role="alert" className="mt-2 text-xs text-red-700" data-testid="existing-key-error">
+            {pasteError}
+          </p>
+        )}
       </Card>
 
       <Card title="Existing keys">

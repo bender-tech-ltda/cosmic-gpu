@@ -90,10 +90,11 @@ describe('<KeysPage />', () => {
   it('sets the active key from the "Use an existing key" form', async () => {
     renderKeysPage();
     const input = screen.getByTestId('existing-key-input') as HTMLInputElement;
-    fireEvent.change(input, { target: { value: 'sk-PRE-EXISTING' } });
+    const validKey = 'sk-PRE-EXISTING-VALID-1234';
+    fireEvent.change(input, { target: { value: validKey } });
     fireEvent.click(screen.getByRole('button', { name: /Use this key/i }));
 
-    await waitFor(() => expect(getActiveApiKey()).toBe('sk-PRE-EXISTING'));
+    await waitFor(() => expect(getActiveApiKey()).toBe(validKey));
     // Field is cleared after submission.
     expect(input.value).toBe('');
     // Clear-active control surfaces.
@@ -106,6 +107,24 @@ describe('<KeysPage />', () => {
     expect(useBtn).toBeDisabled();
     fireEvent.change(screen.getByTestId('existing-key-input'), { target: { value: '   ' } });
     expect(useBtn).toBeDisabled();
+  });
+
+  it('rejects a paste that contains stray characters (e.g. leading bullet)', async () => {
+    renderKeysPage();
+    const input = screen.getByTestId('existing-key-input') as HTMLInputElement;
+    // The exact failing value from the bug report: a leading `- ` survived
+    // a markdown-style copy/paste. Without validation, this lands in
+    // sessionStorage and the SSE client sends `Authorization: Bearer - sk-…`
+    // which the backend rejects with `ApiKeyInvalid`.
+    fireEvent.change(input, {
+      target: { value: '- sk-xcIVRwnEqWtwcGUd5L40mL4YtUOYTuERmEhbvQj7m8Q' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: /Use this key/i }));
+
+    // The active key store stays empty.
+    expect(getActiveApiKey()).toBeNull();
+    // Inline error surfaces.
+    expect(screen.getByTestId('existing-key-error')).toBeInTheDocument();
   });
 
   it('shows the one-time plaintext banner after a successful create', async () => {
