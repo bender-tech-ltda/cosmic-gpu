@@ -40,11 +40,17 @@ export async function bootstrapState(
     'state.bootstrapped',
   );
 
+  const workers = new WorkersState(kv);
+  // Seed the in-memory capacity mirror from any persisted worker records
+  // so the metrics gauge is correct from the first scrape, even before
+  // the first live `worker.health` poll lands.
+  await workers.hydrate();
+
   return {
     kv,
     identity,
     apiKeys: new ApiKeysState(kv),
-    workers: new WorkersState(kv),
+    workers,
     jobs: new JobsState(kv),
     usage: new UsageState(kv),
     async close() {
