@@ -36,12 +36,14 @@ export interface BootstrapP2pOptions {
 export async function bootstrapP2p(opts: BootstrapP2pOptions): Promise<CosmicP2p> {
   const { config, state, log } = opts;
   const swarm = await joinSwarm(config, state.identity, log);
-  // RPC client owns its own DHT (per `@hyperswarm/rpc` doc default). The
-  // streaming transport keeps using the swarm's DHT because
-  // `dht.connect()` does not register a keypair with the DHT — only
-  // `dht.createServer().listen()` does — so the keypair-reuse rule
-  // doesn't apply there.
-  const rpcClient = createRpcClient({ identity: state.identity });
+  // Both the RPC client and the streaming transport share the swarm's DHT
+  // for outbound `dht.connect(workerPubKey)` lookups. The swarm has already
+  // populated its DHT routing table via `swarm.join(topic)`, so reusing it
+  // ensures requests resolve immediately instead of racing a cold,
+  // independent DHT bootstrap. Sharing is safe because neither subsystem
+  // calls `dht.createServer().listen(keyPair)` from the backend; that's
+  // worker-side only and is what would trigger `KEYPAIR_ALREADY_USED`.
+  const rpcClient = createRpcClient({ identity: state.identity, dht: swarm.swarm.dht });
   const streamTransport = createProtomuxStreamTransport({
     identity: state.identity,
     dht: swarm.swarm.dht,
@@ -68,7 +70,7 @@ export async function bootstrapP2p(opts: BootstrapP2pOptions): Promise<CosmicP2p
   if (opts.metrics) {
     opts.metrics.attachWorkerGauges(
       () => registry.size(),
-      () => sumCapacities(state),
+      () => state.workers.totalCapacity(),
     );
   }
 
@@ -87,16 +89,6 @@ export async function bootstrapP2p(opts: BootstrapP2pOptions): Promise<CosmicP2p
       await swarm.close();
     },
   };
-}
-
-function sumCapacities(state: CosmicState): number {
-  // Sync wrapper that intentionally swallows the async iterator's yield
-  // sequence — metrics is best-effort and the caller doesn't `await`.
-  let total = 0;
-  void (async (): Promise<void> => {
-    for await (const w of state.workers.list()) total += w.capacity;
-  })();
-  return total;
 }
 
 export { InferenceDispatcher } from './dispatcher.js';

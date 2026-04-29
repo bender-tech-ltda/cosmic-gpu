@@ -98,6 +98,13 @@ export class WorkerRegistry {
     const pubKeyHex = pubKey.toString('hex');
     if (!this.peers.has(pubKeyHex)) {
       this.peers.set(pubKeyHex, { pubKey, pubKeyHex, failures: 0 });
+      // Surface peer-discovery progress so we can confirm — from logs alone
+      // — that the swarm has actually peered with N workers, independent of
+      // whether `worker.health` succeeded yet.
+      this.deps.log.info(
+        { peers: this.peers.size, pubKey: pubKeyHex.slice(0, 8) + '…' },
+        'p2p.peer_added',
+      );
     }
     await this.pollOne(pubKeyHex);
   }
