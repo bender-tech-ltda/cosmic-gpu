@@ -24,6 +24,14 @@ RUN pnpm --filter @cosmic/worker build
 
 # ---- runtime ----
 FROM ${NODE_IMAGE} AS runtime
+# Holepunch's `rocksdb-native` requires libatomic at runtime on Linux
+# (per its README). `node:*-bookworm-slim` does not ship it, so its
+# prebuilds dlopen fails with `libatomic.so.1: cannot open shared object
+# file`. The require-addon loader masks this as MODULE_NOT_FOUND because
+# it overwrites `cause` while iterating fallback candidates.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends libatomic1 \
+  && rm -rf /var/lib/apt/lists/*
 RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /app
 ENV NODE_ENV=production
