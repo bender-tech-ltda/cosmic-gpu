@@ -18,7 +18,7 @@ export const metricsRoute: FastifyPluginAsyncTypebox = async (app) => {
         description: [
           'Returns a JSON snapshot of inference counters, latency percentiles, worker pool gauges, and rate-limit rejections.',
           '',
-          'Public and **opt-out from rate limiting** so liveness scrapers cannot DoS themselves. Counters reset on restart — single-instance, in-memory (`docs/architecture.md` §4.2). For Prometheus exposition / persistence see §6 Future Improvements.',
+          'Public and **opt-out from rate limiting** so liveness scrapers cannot DoS themselves. Counters reset on restart — single-instance, in-memory (`docs/architecture.md` §4.3). For Prometheus exposition / persistence see §6 Future Improvements.',
         ].join('\n'),
         response: { 200: MetricsResponse },
       },

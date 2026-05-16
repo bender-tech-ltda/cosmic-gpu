@@ -123,7 +123,7 @@ If no key is active, the page shows an empty state with a "Go to API keys" CTA. 
 | **Avg latency**                  | Rolling-window average.                                                                                                                                                                                                                                                          |
 | **Your usage** card              | Visible only when an API key is active. Three sub-stats (`Requests` / `Prompt tokens` / `Completion tokens`) summed across all windows for the active key. The table below shows up to 24 most-recent minutely windows, newest first. Empty state when the key has no usage yet. |
 
-> All counters are kept in an in-memory `MetricsRegistry` on the backend and **reset on backend restart**. The trade-off is documented in `docs/architecture.md` §4.2; persistence + Prometheus exposition are §6 future improvements.
+> All counters are kept in an in-memory `MetricsRegistry` on the backend and **reset on backend restart**. The trade-off is documented in `docs/architecture.md` §4.3; persistence + Prometheus exposition are §6 future improvements.
 
 ## Manual test scenarios
 

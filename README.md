@@ -132,7 +132,8 @@ cp .env.example .env
 pnpm compose:up         # docker compose up --build
 ```
 
-> 1 backend + 3 workers join the same Hyperswarm topic
+> 1 in-Compose HyperDHT bootstrap node + 1 backend + 3 workers + 1 frontend (nginx).
+> All containers join the same Hyperswarm topic; the bootstrap node keeps DHT announcements on the bridge network so peers find each other reliably (see `docs/architecture.md` §4.1 for the bridge-NAT / hairpinning rationale).
 
 **3. Stop the swarm (when done)**
 
@@ -140,13 +141,13 @@ pnpm compose:up         # docker compose up --build
 pnpm compose:down       # docker compose down -v
 ```
 
-If the public Holepunch DHT is unreachable from your network, opt into the self-contained `p2p-local` profile to spin up an in-Compose HyperDHT bootstrap node alongside the backend and workers:
+If you need to test against the **public Holepunch DHT** instead (e.g. multi-host deployments where each container has a routable IP), opt out of the in-Compose bootstrap by setting `P2P_BOOTSTRAP` to an empty string:
 
 ```bash
-docker compose --profile p2p-local up --build
+P2P_BOOTSTRAP= docker compose up --build
 ```
 
-The profile sets `P2P_BOOTSTRAP=dht:49737` for both backend and workers. You can also point at any external bootstrap by setting `P2P_BOOTSTRAP=host:port[,...]` in `.env`.
+You can also point at any external bootstrap by exporting `P2P_BOOTSTRAP=host:port[,...]` before `docker compose up`.
 
 ---
 

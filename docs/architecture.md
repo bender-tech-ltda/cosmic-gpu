@@ -72,6 +72,8 @@ All RPC payloads are Compact Encoded with codecs in `packages/shared/src/schemas
 
 The backend acts as a dispatcher (Step 6). Worker selection is least-in-flight with random tie-break, sourced from the local `WorkersState` accessor. Job state transitions are persisted in `JobsState` (`pending → dispatched → running → complete | failed`). A worker that misses a heartbeat for the configured TTL is soft-removed and any in-flight job is re-dispatched to another worker (non-streaming path) or surfaced to the client as an error event (streaming path).
 
+**RPC client + streaming transport share the swarm's HyperDHT instance.** Both the `@hyperswarm/rpc` client and the Protomux streaming transport reuse `swarmHandle.swarm.dht` for outbound `dht.connect(workerPubKey)` lookups instead of bootstrapping their own DHT. The swarm has already populated its routing table via `swarm.join(topic)`, so reusing it makes RPC requests resolve immediately. Sharing is safe here because the backend never calls `dht.createServer().listen(keyPair)` (only outbound connects), so the `KEYPAIR_ALREADY_USED` constraint that applies to listeners doesn't apply to clients. The worker side keeps its own DHT for `rpc.createServer()` because that path **does** register a keypair on the DHT.
+
 #### 2.6.1 Non-streaming inference sequence
 
 ```mermaid
@@ -180,14 +182,26 @@ These are intentional choices that differ from the original implementation plan 
 
 ## 4.1 Local Compose details
 
-`docker-compose.yml` ships with two ways to bring up the swarm:
+`docker-compose.yml` ships **self-contained by default**: a small `dht` service runs an in-Compose HyperDHT bootstrap node, and every backend / worker container sets `P2P_BOOTSTRAP=dht:49737`. This avoids Docker bridge-NAT hairpinning issues (see below) and works offline.
 
-- **Default (public DHT).** `docker compose up --build` boots 1 backend + 3 workers and lets them discover each other through the public Holepunch DHT bootstrap nodes. This is the closest to a real deployment.
-- **`p2p-local` profile (self-contained).** `docker compose --profile p2p-local up --build` adds a `dht` service that runs `hyperdht --node` on port 49737 and sets `P2P_BOOTSTRAP=dht:49737` for the backend and workers. Useful for offline demos, CI, or networks that block the public DHT.
+```bash
+docker compose up --build              # default: in-Compose DHT bootstrap
+P2P_BOOTSTRAP= docker compose up       # opt-out: public Holepunch DHT
+```
+
+**Why self-contained by default — a Docker bridge-NAT note.** When every node lives on the same Docker bridge (the typical laptop demo), each container's HyperDHT announce records the **host's** external NAT address, not the container's bridge-internal IP. Looking each other up through the public DHT therefore returns external addresses that the bridge can't reach back unless the host router supports NAT hairpinning — which most consumer setups don't. The result is a silent failure: every node announces successfully, no errors are logged, but `swarm.on('connection')` never fires because the UDP packets never arrive. Running an in-Compose `dht` service keeps announcements on bridge-internal IPs (`172.x.x.x`), which the bridge happily routes between containers. The opt-out (`P2P_BOOTSTRAP=`) is preserved so the public-DHT path stays exercisable for multi-host deployments where each container has its own routable IP.
 
 Named volumes (`backend-data`, `worker[1-3]-data`) persist Hyperbee/Hypercore state and node-identity seeds across container restarts so worker pubkeys stay stable.
 
-## 4.2 Telemetry
+## 4.2 Operating notes
+
+A few container-runtime details that surfaced during the Compose hardening pass and are worth knowing if you fork the Dockerfiles:
+
+- **`libatomic1` is required at runtime.** Holepunch's `rocksdb-native` (a transitive dep through `udx-native` → `dht-rpc` → `hyperdht`) needs `libatomic.so.1` at `dlopen` time on Linux. The `node:22-bookworm-slim` base image doesn't ship it, so the `runtime` stage in `docker/{backend,worker}.Dockerfile` installs `libatomic1` explicitly. Without it, the prebuild's `dlopen` fails and the `require-addon` resolver surfaces a misleading `MODULE_NOT_FOUND` for one of the fallback candidate paths instead of the actual `libatomic` error.
+- **Containers run as the unprivileged `node` user.** Both Dockerfiles `mkdir -p /data && chown -R node:node /data` before declaring the `VOLUME ['/data']` so the named volume's mountpoint is owned by uid 1000. Without this, the runtime crashes with `EACCES: permission denied, mkdir '/data/state'` on the first Hyperbee write because Docker initialises a brand-new named volume as `root:root`. Note this only affects the **first** attach — if you've previously created a volume under a buggier image, you need `docker compose down -v` to drop it before the new image's ownership takes effect.
+- **In-Compose `dht` service runs from `/app/apps/backend`.** The backend image uses pnpm's isolated node-linker, so `hyperdht` lives at `/app/apps/backend/node_modules/hyperdht` (not a root-hoisted location). The Compose service overrides `working_dir` so `node -e 'require("hyperdht")'` resolves correctly.
+
+## 4.3 Telemetry
 
 The backend exposes a small in-memory metrics surface:
 
@@ -207,7 +221,28 @@ The current design is single-region and single-backend-replica. To scale:
 
 ## 6. Future Improvements
 
-These are deliberate "should-haves" or "could-haves" that are documented but not implemented in the 2-day window:
+These are deliberate "should-haves" or "could-haves" that are documented but not implemented in the 2-day window.
+
+### 6.1 Final-pass items (test consolidation)
+
+Gaps the test suite would benefit from before a production handoff. Functional behaviour is in place; these are explicit assertions on hard-to-reach edge paths:
+
+- **Dispatcher failure-mode coverage.** End-to-end assertions on the one-retry path, second-failure → `503 workerTimeout`, and empty-registry → `503 noWorkersAvailable`. The dispatcher logic exists and the routes return the right envelopes manually; targeted unit tests would lock in the contract.
+- **Streaming cancellation E2E.** A test that drives the full chain: client `AbortController.abort()` → dispatcher closes the Protomux channel → worker generator observes the close → emits `finishReason: 'cancelled'` → backend records `cancelled` in metrics. Today the pieces are individually unit-tested but no single test traverses the entire chain on a live channel.
+- **Frontend smoke tests for loading / error / empty states.** The Playwright e2e suite covers the happy path on each page. A dedicated set of smokes for `loading` (TanStack Query suspense), `error` (typed `ApiError` envelope rendering), and `empty` (no API key / no workers / no usage windows) states would back up the `frontend-standards.mdc` requirement.
+
+### 6.2 Resource cleanup audit (Step 11.5)
+
+Long-lived resources that currently rely on garbage collection or implicit close-chains. Items to either explicitly close or document with a known-gap rationale:
+
+- **`KvStore.close()` actually closes the Hypercore feed.** The Hyperbee adapter's `close()` only calls `bee.close()`; the underlying Hypercore tree + file handles are released by GC instead of an explicit `core.close()`. Move to explicit teardown so test harness restarts don't accumulate FDs.
+- **Hyperswarm connection objects after a peer disconnect.** `WorkerRegistry` soft-removes the entry from its `peers` Map, but the underlying `NoiseSecretStream` is left to GC. An explicit `conn.destroy()` would release the kernel UDP socket immediately rather than waiting on Node's idle handle close.
+- **Protomux stream-channel listener registry on the worker side.** `attachStreamChannelServer` opens one channel per peer; on peer departure the channel object stays referenced by Protomux's internal map until the next inbound frame triggers cleanup. Explicitly tear down on the swarm `'connection'` close event.
+- **Forgotten event listeners across the close-chain.** `request.raw.on('close')`, `reply.raw.on('error')`, channel `close` callbacks. Audit each consumer and remove listeners on the inverse path (`once`-style or explicit `removeListener` in `finally`) to satisfy the lint rule + avoid the rare leak that only shows up under load.
+
+Output shape: explicit teardown calls + targeted assertions in `apps/backend/src/p2p/registry.test.ts` and the worker stream-channel tests. Audit takes ~30–60 min when scheduled.
+
+### 6.3 Hardening / production candidates
 
 - **Authenticated `/v1/api-keys` management.** Gate behind an admin bearer token (rotated via a signed installer) or mTLS.
 - **Distributed rate-limit store.** Replace `@fastify/rate-limit`'s default memory store with a Hyperbee-backed sliding window keyed at `usage/<keyId>/<windowStart>`.
