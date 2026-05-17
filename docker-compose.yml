@@ -4,8 +4,8 @@
 # implementation plan and `docker-and-cicd.mdc`).
 #
 # Usage:
-#   docker compose up --build                    # self-contained DHT (default)
-#   P2P_BOOTSTRAP= docker compose up --build     # public Holepunch DHT
+#   docker compose up --build                       # self-contained DHT (default)
+#   P2P_BOOTSTRAP=other-host:49737 docker compose up --build  # custom bootstrap
 #
 # Why self-contained by default: when every node lives on the same Docker
 # bridge (typical for a laptop demo), the public Holepunch DHT records
@@ -15,6 +15,13 @@
 # event. Running an in-Compose `dht` bootstrap and pointing every node at
 # `dht:49737` keeps DHT announcements on bridge-internal IPs (172.x.x.x),
 # which the bridge happily routes between containers.
+#
+# Substitution semantics: `${P2P_BOOTSTRAP:-dht:49737}` falls back to the
+# in-Compose bootstrap when the variable is unset OR empty. This matches a
+# fresh `cp .env.example .env` (which ships `P2P_BOOTSTRAP=` empty) — the
+# empty value is treated as "use the default", not "opt out of the
+# bootstrap". To opt out, point `P2P_BOOTSTRAP` at a real external
+# bootstrap (e.g. a public Holepunch DHT seed node) explicitly.
 
 name: cosmic
 
@@ -23,6 +30,13 @@ services:
   # `cosmic/backend:dev` image because it already has `hyperdht` and its
   # native deps (libatomic, rocksdb-native prebuilds) installed — no
   # runtime pnpm-install needed.
+  #
+  # IMPORTANT: this MUST use `HyperDHT.bootstrapper(port, host)` — the
+  # documented entrypoint for an isolated bootstrap node (see
+  # node_modules/hyperdht/bin.js). The previous inline `new HyperDHT({
+  # port })` produced an ordinary DHT peer that tried to bootstrap from
+  # mainnet and bound to a random port (observed port 51795 in live
+  # smokes), so swarm peers pointing at `dht:49737` connected to nothing.
   dht:
     image: cosmic/backend:dev
     build:
@@ -41,14 +55,49 @@ services:
     command:
       - '-e'
       - |
+        const fs = require('fs');
+        const os = require('os');
         const HyperDHT = require('hyperdht');
-        const dht = new HyperDHT({ port: 49737 });
-        dht.ready()
-          .then(() => console.log('dht.ready', dht.address()))
+        const READY_FILE = '/tmp/dht.ready';
+        // HyperDHT.bootstrapper requires a routable host — `0.0.0.0` and
+        // `::` are explicitly rejected (`dht-rpc/index.js:107`). Use the
+        // container's primary non-loopback IPv4 (the Docker bridge IP).
+        function ownHost() {
+          const ifaces = os.networkInterfaces();
+          for (const list of Object.values(ifaces)) {
+            for (const iface of list ?? []) {
+              if (iface.family === 'IPv4' && !iface.internal) return iface.address;
+            }
+          }
+          throw new Error('no non-loopback IPv4 interface available');
+        }
+        const host = ownHost();
+        console.log('dht.host', host);
+        const node = HyperDHT.bootstrapper(49737, host);
+        node
+          .ready()
+          .then(() => {
+            const addr = node.address();
+            console.log('dht.ready', addr);
+            if (addr && addr.port !== 49737) {
+              console.error('dht.port_mismatch', addr.port, 'expected 49737');
+              process.exit(1);
+            }
+            fs.writeFileSync(READY_FILE, JSON.stringify(addr));
+          })
           .catch((err) => { console.error('dht.error', err); process.exit(1); });
-        const stop = () => dht.destroy().then(() => process.exit(0));
+        const stop = () => {
+          try { fs.unlinkSync(READY_FILE); } catch { /* ignore */ }
+          node.destroy().then(() => process.exit(0));
+        };
         process.on('SIGINT', stop);
         process.on('SIGTERM', stop);
+    healthcheck:
+      test: ['CMD', 'test', '-f', '/tmp/dht.ready']
+      interval: 5s
+      timeout: 2s
+      retries: 12
+      start_period: 5s
     restart: unless-stopped
 
   backend:
@@ -62,11 +111,11 @@ services:
       BACKEND_HOST: 0.0.0.0
       BACKEND_PORT: 3000
       P2P_DISCOVERY_TOPIC: ${P2P_DISCOVERY_TOPIC:-}
-      # Default = bootstrap against the in-Compose `dht` service so all
-      # peers discover each other on bridge-internal IPs. Override with
-      # `P2P_BOOTSTRAP=` (empty) in the host shell to bypass the local
-      # bootstrap and use the public Holepunch DHT instead.
-      P2P_BOOTSTRAP: ${P2P_BOOTSTRAP-dht:49737}
+      P2P_BOOTSTRAP: ${P2P_BOOTSTRAP:-dht:49737}
+      # Demo-only HMAC secret. The backend's config loader fail-fasts on
+      # an empty value under NODE_ENV=production. Override via .env or
+      # the host shell for anything other than the local Compose demo.
+      API_KEY_HMAC_SECRET: ${API_KEY_HMAC_SECRET:-cosmic-compose-demo-hmac-secret-do-not-use-in-production}
       STATE_BACKEND: hyperbee
       DATA_DIR: /data
       NODE_KEYPAIR_PATH: /data/node.keypair
@@ -75,7 +124,11 @@ services:
     volumes:
       - backend-data:/data
     networks: [cosmic-net]
-    depends_on: [dht, worker1]
+    depends_on:
+      dht:
+        condition: service_healthy
+      worker1:
+        condition: service_started
     restart: unless-stopped
     healthcheck:
       test:
@@ -96,13 +149,15 @@ services:
     environment:
       WORKER_ID: worker1
       P2P_DISCOVERY_TOPIC: ${P2P_DISCOVERY_TOPIC:-}
-      P2P_BOOTSTRAP: ${P2P_BOOTSTRAP-dht:49737}
+      P2P_BOOTSTRAP: ${P2P_BOOTSTRAP:-dht:49737}
       DATA_DIR: /data
       NODE_KEYPAIR_PATH: /data/node.keypair
     volumes:
       - worker1-data:/data
     networks: [cosmic-net]
-    depends_on: [dht]
+    depends_on:
+      dht:
+        condition: service_healthy
     restart: unless-stopped
 
   worker2:
@@ -114,13 +169,15 @@ services:
     environment:
       WORKER_ID: worker2
       P2P_DISCOVERY_TOPIC: ${P2P_DISCOVERY_TOPIC:-}
-      P2P_BOOTSTRAP: ${P2P_BOOTSTRAP-dht:49737}
+      P2P_BOOTSTRAP: ${P2P_BOOTSTRAP:-dht:49737}
       DATA_DIR: /data
       NODE_KEYPAIR_PATH: /data/node.keypair
     volumes:
       - worker2-data:/data
     networks: [cosmic-net]
-    depends_on: [dht]
+    depends_on:
+      dht:
+        condition: service_healthy
     restart: unless-stopped
 
   worker3:
@@ -132,13 +189,15 @@ services:
     environment:
       WORKER_ID: worker3
       P2P_DISCOVERY_TOPIC: ${P2P_DISCOVERY_TOPIC:-}
-      P2P_BOOTSTRAP: ${P2P_BOOTSTRAP-dht:49737}
+      P2P_BOOTSTRAP: ${P2P_BOOTSTRAP:-dht:49737}
       DATA_DIR: /data
       NODE_KEYPAIR_PATH: /data/node.keypair
     volumes:
       - worker3-data:/data
     networks: [cosmic-net]
-    depends_on: [dht]
+    depends_on:
+      dht:
+        condition: service_healthy
     restart: unless-stopped
 
   # Vite-built React SPA served by nginx. Reverse-proxies `/v1`, `/health`,

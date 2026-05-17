@@ -11,8 +11,9 @@ The script is organised by minute so you can record straight through; each secti
 # Repo root
 nvm use
 pnpm install
-docker compose down -v --remove-orphans   # clean state
-docker compose up --build                 # in-Compose DHT bootstrap is the default
+cp .env.example .env                       # all values can stay empty — see Troubleshooting in README
+docker compose down -v --remove-orphans    # clean state
+pnpm compose:up                            # docker compose up --build (in-Compose DHT bootstrap is default)
 ```
 
 Wait until the backend log shows three `p2p.peer_added` lines:
@@ -22,6 +23,8 @@ backend-1 | "p2p.peer_added" peers: 1, pubKey: 9fbcfca0…
 backend-1 | "p2p.peer_added" peers: 2, pubKey: 6e100fb9…
 backend-1 | "p2p.peer_added" peers: 3, pubKey: 7fb2a1e0…
 ```
+
+Once all three peers have joined, `curl :3000/ready | jq` returns `status: ready, peers: 3` and `curl :3000/metrics | jq .workers` shows `connected: 3, capacity: 12`. If you want a hands-off verification, run `pnpm compose:smoke` instead — it asserts the same conditions plus streaming `[DONE]` end-to-end.
 
 Open four browser tabs:
 
@@ -40,7 +43,7 @@ Show the README's high-level diagram or `docs/architecture.md` §1.
 
 ## 0:30 – 1:00 — Topology (30 s)
 
-> "What you're looking at right now is the full Compose stack: one in-Compose HyperDHT bootstrap node, one Fastify backend, three workers each on their own Hyperbee state, and an nginx serving the Vite-built React frontend. They form a complete-graph mesh on a shared 32-byte topic."
+> "What you're looking at right now is the full Compose stack: one in-Compose HyperDHT bootstrap node, one Fastify backend, three workers each on their own Hyperbee state, and an nginx serving the Vite-built React frontend. The backend is the swarm server for its own keypair; the workers join the topic as clients only — they advertise their pubkey through their RPC server's DHT instead. That single-listener split keeps RPC requests from racing two listeners on the same keypair."
 
 Show `docker compose ps`:
 
@@ -48,7 +51,7 @@ Show `docker compose ps`:
 docker compose ps
 ```
 
-Highlight the five running services. Mention that `dht` is in-Compose by default to side-step Docker bridge-NAT hairpinning (`docs/architecture.md` §4.1) and that `P2P_BOOTSTRAP=` opts out to the public Holepunch DHT.
+Highlight the five running services and the `dht` service's `healthy` column. Mention that `dht` runs `HyperDHT.bootstrapper(49737, ownHost)` (the documented isolated-bootstrap entrypoint) and the in-Compose default side-steps Docker bridge-NAT hairpinning (`docs/architecture.md` §4.1).
 
 ## 1:00 – 2:00 — API keys (60 s)
 
@@ -108,6 +111,8 @@ Tab to the editor for ~20 s. Show:
 > One: we use Hyperbee directly, not HyperDB. The brief names HyperDB but `hyperdb@6.x` is a schema-first document database with codegen — wrong tool for our generic key/JSON workload. There's a runnable awareness demo under `apps/backend/scripts/hyperdb-demo` that exercises HyperDB end-to-end; the architecture doc §2.4 has the reasoning.
 > Two: rate-limit and metrics are in-memory; counters reset on restart. Production swap is Redis or Hyperbee.
 > Three: signed result envelopes, Mark-and-Sweep GC, and Fork-ID truncate handling are deliberately out of scope; documented under §6."
+
+> "On reliability: there's a `/ready` endpoint that returns 503 until the swarm forms, a 30-second discovery watchdog that prints an actionable checklist if peers don't show up, fail-fast config validation that catches the .env.example placeholder traps, and a `pnpm compose:smoke` script that brings everything up and asserts peers=3 + streaming `[DONE]` end-to-end — same script runs in CI behind a label."
 
 > "Thanks for watching."
 

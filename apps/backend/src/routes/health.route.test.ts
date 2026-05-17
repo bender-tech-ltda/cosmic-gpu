@@ -42,3 +42,21 @@ describe('GET /health', () => {
     expect((id as string).length).toBeGreaterThan(0);
   });
 });
+
+describe('GET /ready', () => {
+  let app: FastifyInstance;
+
+  beforeAll(async () => {
+    app = await buildApp({ logger: false });
+  });
+
+  afterAll(async () => {
+    await app.close();
+  });
+
+  it('returns 503 not_ready when no peers are registered (test mode skips P2P)', async () => {
+    const res = await app.inject({ method: 'GET', url: '/ready' });
+    expect(res.statusCode).toBe(503);
+    expect(res.json()).toMatchObject({ status: 'not_ready', peers: 0, reason: 'no_peers' });
+  });
+});

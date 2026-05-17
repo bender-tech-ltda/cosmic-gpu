@@ -118,6 +118,37 @@ describe('WorkerRegistry', () => {
     expect(await workers.findByPubKey(PUB_HEX)).toBeNull();
   });
 
+  it('rejects a health snapshot whose workerPubKey mismatches the connection pubkey', async () => {
+    const swarm = fakeSwarm();
+    const kv = new InMemoryKvStore();
+    const workers = new WorkersState(kv);
+    const client = makeClient(async () =>
+      // Connection pubkey is PUB (0x42 × 32). Snapshot reports a different
+      // pubkey — registry must treat this as a failure rather than upsert.
+      healthSnapshot({ workerPubKey: '99'.repeat(32) }),
+    );
+    const registry = new WorkerRegistry({
+      swarm: swarm as unknown as Parameters<typeof WorkerRegistry>[0]['swarm'],
+      rpcClient: client,
+      workersState: workers,
+      log: fakeLog(),
+      pollIntervalMs: 60_000,
+      failureThreshold: 99,
+      setInterval: (() =>
+        ({ unref: (): void => {} }) as unknown as ReturnType<
+          typeof setInterval
+        >) as unknown as typeof setInterval,
+      clearInterval: (() => {}) as typeof clearInterval,
+    });
+    registry.start();
+    await registry.registerPeer(PUB);
+    // Peer still in registry (failure threshold not yet hit), but state was
+    // NOT poisoned with the mismatched snapshot.
+    expect(registry.size()).toBe(1);
+    expect(await workers.findByPubKey(PUB_HEX)).toBeNull();
+    expect(await workers.findByPubKey('99'.repeat(32))).toBeNull();
+  });
+
   it('attaches a connection listener when start() is called', () => {
     const swarm = fakeSwarm();
     const onSpy = vi.spyOn(swarm, 'on');
@@ -135,5 +166,25 @@ describe('WorkerRegistry', () => {
     });
     registry.start();
     expect(onSpy).toHaveBeenCalledWith('connection', expect.any(Function));
+  });
+
+  it('detaches the connection listener on stop()', async () => {
+    const swarm = fakeSwarm();
+    const registry = new WorkerRegistry({
+      swarm: swarm as unknown as Parameters<typeof WorkerRegistry>[0]['swarm'],
+      rpcClient: makeClient(async () => healthSnapshot()),
+      workersState: new WorkersState(new InMemoryKvStore()),
+      log: fakeLog(),
+      pollIntervalMs: 60_000,
+      setInterval: (() =>
+        ({ unref: (): void => {} }) as unknown as ReturnType<
+          typeof setInterval
+        >) as unknown as typeof setInterval,
+      clearInterval: (() => {}) as typeof clearInterval,
+    });
+    registry.start();
+    expect(swarm.listenerCount('connection')).toBe(1);
+    await registry.stop();
+    expect(swarm.listenerCount('connection')).toBe(0);
   });
 });

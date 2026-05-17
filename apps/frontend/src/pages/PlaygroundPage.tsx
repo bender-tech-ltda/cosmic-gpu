@@ -13,7 +13,7 @@
 //   - aria-live="polite" on the response region for screen-reader updates.
 
 import { Link } from 'react-router-dom';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 
 import Button from '../components/Button.js';
 import Card from '../components/Card.js';
@@ -33,6 +33,16 @@ export default function PlaygroundPage(): JSX.Element {
   const [model, setModel] = useState<string>('mock-llm');
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const [finishedAt, setFinishedAt] = useState<number | null>(null);
+
+  // Sync the selected model to the first available id once the registry
+  // reports its set. Without this, the dropdown sits on the hardcoded
+  // 'mock-llm' default even when the backend exposes a richer list.
+  useEffect(() => {
+    const ids = models.data?.data.map((m) => m.id) ?? [];
+    if (ids.length > 0 && !ids.includes(model)) {
+      setModel(ids[0] as string);
+    }
+  }, [models.data, model]);
 
   const onSubmit = (e: FormEvent<HTMLFormElement>): void => {
     e.preventDefault();

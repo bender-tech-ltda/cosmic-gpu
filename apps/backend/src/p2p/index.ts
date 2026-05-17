@@ -31,6 +31,11 @@ export interface BootstrapP2pOptions {
   metrics?: MetricsRegistry;
   /** Heartbeat poll cadence in ms (defaults to 10 s). */
   pollIntervalMs?: number;
+  /**
+   * Cold-start window before the discovery watchdog complains. Default 30 s.
+   * Tests can shorten this to assert the warn is emitted.
+   */
+  discoveryWatchdogMs?: number;
 }
 
 export async function bootstrapP2p(opts: BootstrapP2pOptions): Promise<CosmicP2p> {
@@ -44,10 +49,6 @@ export async function bootstrapP2p(opts: BootstrapP2pOptions): Promise<CosmicP2p
   // calls `dht.createServer().listen(keyPair)` from the backend; that's
   // worker-side only and is what would trigger `KEYPAIR_ALREADY_USED`.
   const rpcClient = createRpcClient({ identity: state.identity, dht: swarm.swarm.dht });
-  const streamTransport = createProtomuxStreamTransport({
-    identity: state.identity,
-    dht: swarm.swarm.dht,
-  });
 
   const registry = new WorkerRegistry({
     swarm: swarm.swarm,
@@ -57,6 +58,12 @@ export async function bootstrapP2p(opts: BootstrapP2pOptions): Promise<CosmicP2p
     pollIntervalMs: opts.pollIntervalMs ?? 10_000,
   });
   registry.start();
+
+  // The streaming transport reuses the swarm connection the worker
+  // already established. See the file header in `stream-transport.ts`.
+  const streamTransport = createProtomuxStreamTransport({
+    getConn: (pubKey) => registry.getConn(pubKey),
+  });
 
   const dispatcher = new InferenceDispatcher({
     rpcClient,
@@ -74,6 +81,29 @@ export async function bootstrapP2p(opts: BootstrapP2pOptions): Promise<CosmicP2p
     );
   }
 
+  // Discovery watchdog: if the swarm hasn't formed after the cold-start
+  // window, emit a single actionable warning. Helps reviewers diagnose
+  // the "peers: 0 forever" failure mode without digging through logs.
+  const watchdogMs = opts.discoveryWatchdogMs ?? 30_000;
+  const watchdog = setTimeout(() => {
+    if (registry.size() === 0) {
+      log.warn(
+        {
+          peers: 0,
+          watchdogMs,
+          checklist: [
+            'check dht service: docker compose logs dht | grep dht.ready',
+            'check workers: docker compose logs worker1 | grep rpc.ready',
+            'verify P2P_DISCOVERY_TOPIC matches across backend + workers',
+            'verify P2P_BOOTSTRAP resolves to the dht service',
+          ],
+        },
+        'p2p.watchdog.no_peers',
+      );
+    }
+  }, watchdogMs);
+  if (typeof watchdog.unref === 'function') watchdog.unref();
+
   log.info({ topic: '32B-base64', pubKey: state.identity.publicKeyShort }, 'p2p.ready');
 
   return {
@@ -83,6 +113,7 @@ export async function bootstrapP2p(opts: BootstrapP2pOptions): Promise<CosmicP2p
     registry,
     dispatcher,
     close: async () => {
+      clearTimeout(watchdog);
       await registry.stop();
       await rpcClient.close();
       await streamTransport.close();

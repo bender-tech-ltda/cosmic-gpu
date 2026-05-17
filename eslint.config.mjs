@@ -43,10 +43,11 @@ export default tseslint.config(
       'no-console': 'off',
     },
   },
-  // Build / demo scripts run as raw Node — they need access to Node globals,
-  // CJS interop (`require` / `module`), and may legitimately use `console`.
+  // Build / demo scripts and diagnostics run as raw Node — they need access
+  // to Node globals, CJS interop (`require` / `module`), and may legitimately
+  // use `console`.
   {
-    files: ['**/scripts/**/*.{js,cjs,mjs}'],
+    files: ['**/scripts/**/*.{js,cjs,mjs}', '**/diagnostics/**/*.{js,cjs,mjs}'],
     languageOptions: {
       ecmaVersion: 2022,
       globals: {
@@ -58,6 +59,10 @@ export default tseslint.config(
         require: 'readonly',
         module: 'readonly',
         exports: 'writable',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
       },
     },
     rules: {

@@ -21,6 +21,7 @@ import type { Logger } from 'pino';
 import { WORKER_AUDIT_EVENT, logEvent } from '../observability/logger.js';
 import { buildHealthSnapshot, type WorkerHealthDeps } from '../handlers/health.handler.js';
 import { runInference, type InferenceHandlerDeps } from '../handlers/inference.handler.js';
+import type { BootstrapNode } from './bootstrap.js';
 import type { WorkerIdentity } from './identity.js';
 
 // Zero-byte request codec for `worker.health`. Must match the backend's
@@ -49,6 +50,18 @@ export interface RpcServerDeps {
   health: WorkerHealthDeps;
   /** Source of the inference.run handler. */
   inference: InferenceHandlerDeps;
+  /**
+   * Parsed `P2P_BOOTSTRAP` list. The RPC server builds its own HyperDHT
+   * (see comment in `startRpcServer`); without forwarding the same
+   * bootstrap nodes the swarm uses, the RPC DHT silently falls back to
+   * the public Holepunch mainnet. Inside Docker Compose that means the
+   * RPC listener is registered on a different routing topology from the
+   * backend's lookups — backend `dht.connect(workerPubKey)` resolves
+   * nothing, producing `RPCError: CHANNEL_CLOSED`/`CHANNEL_DESTROYED`
+   * and the soft-removal loop the reviewer hit. Undefined ⇒ inherit
+   * mainnet defaults (native dev, no Compose).
+   */
+  bootstrap?: BootstrapNode[];
 }
 
 export async function startRpcServer(deps: RpcServerDeps): Promise<RpcServerHandle> {
@@ -58,8 +71,12 @@ export async function startRpcServer(deps: RpcServerDeps): Promise<RpcServerHand
   // DHT instance", and our swarm already calls `dht.createServer().listen(
   // identity)` via `swarm.join({ server: true })`. Reusing the same DHT
   // would cause `KEYPAIR_ALREADY_USED`.
+  //
+  // We DO forward `bootstrap` so this fresh DHT joins the same routing
+  // topology as the swarm. See `RpcServerDeps.bootstrap` JSDoc.
   const rpc = new HyperswarmRPC({
     keyPair: { publicKey: deps.identity.publicKey, secretKey: deps.identity.secretKey },
+    ...(deps.bootstrap !== undefined ? { bootstrap: deps.bootstrap } : {}),
   });
 
   const server = rpc.createServer();

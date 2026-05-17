@@ -7,6 +7,7 @@
 import { loadConfig } from './config/env.config.js';
 import { runInference } from './handlers/inference.handler.js';
 import { WORKER_AUDIT_EVENT, buildLogger, logEvent } from './observability/logger.js';
+import { parseBootstrap } from './runtime/bootstrap.js';
 import { installP2pErrorGuards } from './runtime/error-guards.js';
 import { loadOrGenerateIdentity } from './runtime/identity.js';
 import { startRpcServer } from './runtime/rpc-server.js';
@@ -68,6 +69,7 @@ async function main(): Promise<void> {
       modelId: config.WORKER_MODEL_ID,
     },
     inference: inferenceDeps,
+    bootstrap: parseBootstrap(config.P2P_BOOTSTRAP),
   });
 
   // Streaming inference travels over a Protomux channel attached to each
