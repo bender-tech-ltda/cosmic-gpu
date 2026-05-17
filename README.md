@@ -22,6 +22,30 @@ A simplified, decentralized AI PaaS built on the Holepunch P2P stack. Demonstrat
 
 ---
 
+## Reviewer quickstart
+
+> **Canonical branch:** `main`. Evaluate the tip of `main` (a `submission-v0`
+> tag marks the SHA submitted for review).
+>
+> **Tested on:** macOS 15.x / Linux Debian 12 with **Docker Desktop 4.x** (or
+> Engine 24+), **Node 22.x** (`.nvmrc` provided), **pnpm 9.x** via `corepack`.
+> Apple Silicon and x86_64 both work; if `rocksdb-native` prebuilds fail on
+> your host architecture, pin `platform: linux/amd64` on the backend/worker
+> Compose services and rebuild.
+>
+> **One-shot smoke:**
+>
+> ```bash
+> nvm use && corepack enable
+> pnpm install
+> cp .env.example .env       # empty values are fine — see "Troubleshooting"
+> pnpm compose:up            # docker compose up --build
+> # wait ~30–60 s for the swarm to form, then:
+> curl -s :3000/health | jq    # expect p2p.peers >= 3
+> ```
+
+---
+
 ## High-Level Architecture
 
 ```mermaid
@@ -132,7 +156,8 @@ cp .env.example .env
 pnpm compose:up         # docker compose up --build
 ```
 
-> 1 backend + 3 workers join the same Hyperswarm topic
+> 1 in-Compose HyperDHT bootstrap node + 1 backend + 3 workers + 1 frontend (nginx).
+> All containers join the same Hyperswarm topic; the bootstrap node keeps DHT announcements on the bridge network so peers find each other reliably (see `docs/architecture.md` §4.1 for the bridge-NAT / hairpinning rationale).
 
 **3. Stop the swarm (when done)**
 
@@ -140,13 +165,13 @@ pnpm compose:up         # docker compose up --build
 pnpm compose:down       # docker compose down -v
 ```
 
-If the public Holepunch DHT is unreachable from your network, opt into the self-contained `p2p-local` profile to spin up an in-Compose HyperDHT bootstrap node alongside the backend and workers:
+If you need to test against the **public Holepunch DHT** instead (e.g. multi-host deployments where each container has a routable IP), opt out of the in-Compose bootstrap by setting `P2P_BOOTSTRAP` to an empty string:
 
 ```bash
-docker compose --profile p2p-local up --build
+P2P_BOOTSTRAP= docker compose up --build
 ```
 
-The profile sets `P2P_BOOTSTRAP=dht:49737` for both backend and workers. You can also point at any external bootstrap by setting `P2P_BOOTSTRAP=host:port[,...]` in `.env`.
+You can also point at any external bootstrap by exporting `P2P_BOOTSTRAP=host:port[,...]` before `docker compose up`.
 
 ---
 
@@ -178,6 +203,67 @@ curl -s -X POST :3000/v1/chat/completions \
 ```
 
 Expected output: an OpenAI-shaped `chat.completion` with synthetic text, `finish_reason: "length"`, and non-zero `usage.total_tokens`.
+
+---
+
+## Troubleshooting
+
+A reviewer following the Compose quick-start should see all 6 services healthy
+within ~60 s. If that doesn't happen, these are the most common failure modes
+and how to diagnose them quickly.
+
+**Cold-start window — `/health` reports `peers: 0` immediately.**
+Hyperswarm peer discovery takes 5–30 s after `pnpm compose:up`. Watch the
+backend log for `p2p.peer_added` lines first; only then curl `/health`.
+
+```bash
+docker compose logs -f backend | grep p2p.peer_added
+```
+
+You should see three `p2p.peer_added` lines (`peers: 1`, `2`, `3`) within
+roughly 30 seconds. `/metrics` then reports `workers.connected = 3` and
+`workers.capacity = 12` (4 capacity per worker × 3 workers).
+
+**`/health` keeps reporting `peers: 0` for more than 60 s.**
+
+1. Check the DHT bootstrap is healthy: `docker compose ps dht` should be
+   `healthy` and `docker compose logs dht` should include
+   `dht.ready { host: '...', family: 4, port: 49737 }`. If the port is
+   anything other than `49737`, the DHT container could not bind — check
+   that nothing else on the bridge is grabbing the port.
+2. Verify the workers connected to the bootstrap:
+   `docker compose logs worker1 | grep rpc.ready` — each worker should
+   log one `rpc.ready` line within 1 s of boot.
+3. If everything boots cleanly but discovery still doesn't form, you may
+   be in a sandboxed UDP environment (some corporate VPNs block DHT
+   traffic). The in-Compose default keeps DHT traffic on the bridge
+   network and should work, but if `dht.ready` itself never appears,
+   `docker compose down -v && docker compose up --build` and retry.
+
+**Backend logs `worker.health poll failed` / `RPCError: CHANNEL_CLOSED` /
+`worker.soft_removed`.** This is the symptom of a misaligned DHT
+bootstrap topology. If you see this on `main`, please open an issue;
+the in-Compose path is covered by `pnpm compose:smoke`.
+
+**`.env.example` placeholders.** The shipped `.env.example` has every
+value either set to a sane default or empty (the backend's config loader
+falls back to a deterministic dev topic, dev HMAC, etc.). If you replace
+`P2P_DISCOVERY_TOPIC` with a custom value, it must be **exactly 32 bytes
+when base64-decoded** — the config loader fails fast with a precise
+error message if not. Generate one with:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+**Native deps on Apple Silicon.** `rocksdb-native` ships prebuilds for
+`linux-amd64` and `linux-arm64`. Docker Desktop on Apple Silicon runs
+amd64 images under qemu by default; if that's slow or unstable for you,
+add `platform: linux/arm64` to the backend and worker services in
+`docker-compose.yml`.
+
+**Submission zip.** Generate a reviewer-friendly archive from the current
+commit with `pnpm zip` (or `git archive --format=zip HEAD -o cosmic.zip`).
 
 ---
 

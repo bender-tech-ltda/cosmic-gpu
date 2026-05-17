@@ -1,0 +1,70 @@
+name: cosmic-p2p-rpc-diagnostic
+
+x-diagnostic-base: &diagnostic-base
+  image: cosmic/p2p-rpc-diagnostic:dev
+  build:
+    context: ../..
+    dockerfile: docker/backend.Dockerfile
+  working_dir: /app/apps/backend
+  volumes:
+    - .:/diagnostics/p2p-rpc:ro
+    - p2p-rpc-state:/data
+  networks: [p2p-rpc-net]
+
+services:
+  dht:
+    <<: *diagnostic-base
+    entrypoint: ['node', '/diagnostics/p2p-rpc/diagnostic.cjs', 'dht']
+    environment:
+      P2P_DIAG_STATE_DIR: /data/p2p-rpc-state
+      P2P_DIAG_DHT_PORT: ${P2P_DIAG_DHT_PORT:-49737}
+    healthcheck:
+      test: ['CMD', 'test', '-f', '/data/p2p-rpc-state/dht.ready']
+      interval: 2s
+      timeout: 2s
+      retries: 20
+      start_period: 2s
+
+  server:
+    <<: *diagnostic-base
+    entrypoint: ['node', '/diagnostics/p2p-rpc/diagnostic.cjs', 'server']
+    environment:
+      P2P_DIAG_STATE_DIR: /data/p2p-rpc-state
+      P2P_DIAG_BOOTSTRAP: ${P2P_DIAG_BOOTSTRAP:-dht:49737}
+      P2P_DIAG_ATTEMPTS: ${P2P_DIAG_ATTEMPTS:-3}
+      P2P_DIAG_REQUEST_TIMEOUT_MS: ${P2P_DIAG_REQUEST_TIMEOUT_MS:-20000}
+      P2P_DIAG_READY_TIMEOUT_MS: ${P2P_DIAG_READY_TIMEOUT_MS:-15000}
+      P2P_DIAG_HOLEPUNCH: ${P2P_DIAG_HOLEPUNCH:-}
+      P2P_DIAG_SHARE_LOCAL_ADDRESS: ${P2P_DIAG_SHARE_LOCAL_ADDRESS:-}
+    depends_on:
+      dht:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'test', '-f', '/data/p2p-rpc-state/server.ready']
+      interval: 2s
+      timeout: 2s
+      retries: 20
+      start_period: 2s
+
+  client:
+    <<: *diagnostic-base
+    entrypoint: ['node', '/diagnostics/p2p-rpc/diagnostic.cjs', 'client']
+    environment:
+      P2P_DIAG_STATE_DIR: /data/p2p-rpc-state
+      P2P_DIAG_BOOTSTRAP: ${P2P_DIAG_BOOTSTRAP:-dht:49737}
+      P2P_DIAG_ATTEMPTS: ${P2P_DIAG_ATTEMPTS:-3}
+      P2P_DIAG_REQUEST_TIMEOUT_MS: ${P2P_DIAG_REQUEST_TIMEOUT_MS:-20000}
+      P2P_DIAG_READY_TIMEOUT_MS: ${P2P_DIAG_READY_TIMEOUT_MS:-15000}
+    depends_on:
+      dht:
+        condition: service_healthy
+      server:
+        condition: service_healthy
+    restart: 'no'
+
+networks:
+  p2p-rpc-net:
+    driver: bridge
+
+volumes:
+  p2p-rpc-state:

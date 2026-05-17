@@ -10,3 +10,10 @@ export const HealthResponse = Type.Object({
   version: Type.String(),
 });
 export type HealthResponse = Static<typeof HealthResponse>;
+
+export const ReadyResponse = Type.Object({
+  status: Type.Union([Type.Literal('ready'), Type.Literal('not_ready')]),
+  peers: Type.Integer({ minimum: 0 }),
+  reason: Type.Optional(Type.String()),
+});
+export type ReadyResponse = Static<typeof ReadyResponse>;

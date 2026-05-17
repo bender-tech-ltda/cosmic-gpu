@@ -19,8 +19,12 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,json,md,yml,yaml}\"",
     "typecheck": "pnpm build:shared && pnpm -r typecheck",
     "clean": "pnpm -r clean && rm -rf node_modules",
+    "diag:p2p-rpc": "sh diagnostics/p2p-rpc/run.sh",
     "compose:up": "docker compose up --build",
-    "compose:down": "docker compose down -v"
+    "compose:down": "docker compose down -v",
+    "compose:smoke": "bash scripts/compose-smoke.sh",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test:run && pnpm build && pnpm format:check",
+    "zip": "git archive --format=zip --prefix=cosmic-take-home/ -o cosmic-take-home.zip HEAD"
   },
   "devDependencies": {
     "@eslint/js": "^9.13.0",

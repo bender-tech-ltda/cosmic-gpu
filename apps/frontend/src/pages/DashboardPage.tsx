@@ -38,7 +38,7 @@ export default function DashboardPage(): JSX.Element {
         <p className="mt-1 text-sm text-slate-600">
           Live counters and latency percentiles, polled every 5 s. Counters reset on backend restart
           — documented in{' '}
-          <code className="rounded bg-slate-100 px-1 text-xs">docs/architecture.md §4.2</code>.
+          <code className="rounded bg-slate-100 px-1 text-xs">docs/architecture.md §4.3</code>.
         </p>
       </header>
 

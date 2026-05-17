@@ -29,9 +29,11 @@ The platform is split into three runtime processes plus shared contracts:
 
 ### 2.1 Discovery (Hyperswarm)
 
-All nodes (backend + workers) join a shared 32-byte topic, configured via `P2P_DISCOVERY_TOPIC`. Every node announces with `client: true, server: true`, forming a complete-graph mesh for ≤10 peers. NAT traversal is automatic via HyperDHT.
+All nodes (backend + workers) join a shared 32-byte topic, configured via `P2P_DISCOVERY_TOPIC`. The **backend** announces with `client: true, server: true` (it is the canonical server for its own keypair on the topic). **Workers** join the same topic as `client: true, server: false` — they connect outwards to find the backend, but they do **not** register their own keypair as a swarm listener. NAT traversal is automatic via HyperDHT.
 
-For local Compose runs we expose an optional `P2P_BOOTSTRAP` env var (comma-separated `host:port` list). When empty, nodes fall back to the public Holepunch DHT bootstrap nodes. When set, nodes bootstrap against a deterministic local seed — useful for offline demos or networks that block the public DHT.
+Why workers are client-only on the swarm: the worker's `@hyperswarm/rpc` server already registers the worker's keypair as a listener on its own DHT instance (`rpc.createServer().listen(keyPair)`). If the swarm ALSO registered the same keypair on `swarm.dht` (`swarm.join(topic, { server: true })`), the same pubkey would be advertised twice on the shared bootstrap. Backend `dht.connect(workerPubKey)` lookups would round-robin between the two listeners; the swarm listener accepts a raw NoiseSecretStream that has no Protomux RPC handlers wired, so RPC framing fails with `RPCError: CHANNEL_CLOSED` / `CHANNEL_DESTROYED` and the registry soft-removes the worker. The single-listener architecture (RPC owns the keypair on the DHT; swarm carries the outbound conn for the topic-mesh + the Protomux streaming channel) eliminates that failure mode. See `apps/worker/src/runtime/swarm.ts` for the in-code rationale.
+
+For local Compose runs we expose `P2P_BOOTSTRAP` (comma-separated `host:port` list). The Compose default substitutes `dht:49737` (`${P2P_BOOTSTRAP:-dht:49737}` — `:-` so a `cp .env.example .env` with an empty value still substitutes). To opt into the public Holepunch DHT for native multi-host deployments, point `P2P_BOOTSTRAP` at a real external bootstrap. Backend, worker swarm, and the worker's `@hyperswarm/rpc` server **all** receive the same bootstrap list so they share the same DHT routing topology — without that alignment, the RPC server's separate DHT silently falls back to mainnet and backend lookups can't reach it.
 
 ### 2.2 Identity
 
@@ -71,6 +73,12 @@ All RPC payloads are Compact Encoded with codecs in `packages/shared/src/schemas
 ### 2.6 Workload distribution
 
 The backend acts as a dispatcher (Step 6). Worker selection is least-in-flight with random tie-break, sourced from the local `WorkersState` accessor. Job state transitions are persisted in `JobsState` (`pending → dispatched → running → complete | failed`). A worker that misses a heartbeat for the configured TTL is soft-removed and any in-flight job is re-dispatched to another worker (non-streaming path) or surfaced to the client as an error event (streaming path).
+
+**Transport topology across backend + worker.**
+
+- **Backend RPC client** reuses `swarmHandle.swarm.dht` for outbound `dht.connect(workerPubKey)` lookups. The swarm has already populated its routing table via `swarm.join(topic)`, so reusing it makes RPC requests resolve immediately. Sharing is safe because the backend never calls `dht.createServer().listen(keyPair)` — the `KEYPAIR_ALREADY_USED` constraint that applies to listeners doesn't apply to clients.
+- **Backend streaming transport** does NOT open a fresh `dht.connect()` per stream. Instead, `WorkerRegistry.getConn(workerPubKey)` returns the existing Hyperswarm connection the worker established when it joined the topic; the streaming transport attaches `Protomux.from(conn)` and opens the `cosmic/inference-stream/v1` channel on that connection. This is the same connection the worker's `attachStreamChannelServer` registered the channel handler on, so the channel opens immediately. The previous implementation (fresh `dht.connect` per stream) landed on the worker's RPC DHT listener — where the streaming protocol is not registered — and timed out silently. See `apps/backend/src/p2p/stream-transport.ts` for the in-code rationale.
+- **Worker RPC server** keeps its own HyperDHT instance because `rpc.createServer().listen(keyPair)` DOES register a listener for that keypair. Reusing the swarm's DHT here would trigger `KEYPAIR_ALREADY_USED`. The RPC server's DHT receives the same `P2P_BOOTSTRAP` list as the swarm so both routing topologies converge on the same bootstrap node.
 
 #### 2.6.1 Non-streaming inference sequence
 
@@ -112,6 +120,7 @@ sequenceDiagram
     B->>B: auth.preHandler → rate-limit
     B->>B: reply.hijack() → SSE headers
     B->>T: openStream(workerPubKey, request, signal)
+    T->>T: getConn(workerPubKey) → existing swarm conn
     T->>W: protomux channel open + framed InferenceRequest
     loop generator yields
         W-->>T: InferenceResponseChunk { delta }
@@ -158,7 +167,7 @@ stateDiagram-v2
 | Worker disappears mid-stream     | Backend terminates the SSE connection with a final `data: {error: WorkerTimeout}` event. No silent reconnection.                                                                                                                                                                                         |
 | Client disconnects mid-stream    | Backend's route hooks `request.raw.on('close')` → `AbortController.abort()`; the dispatcher's `dispatchStream` finally-block closes the Protomux channel; the worker's generator observes the close and emits `finishReason: 'cancelled'`. Job transitions to `failed` and `inference.failed` is logged. |
 | Worker disappears mid non-stream | Backend re-dispatches once to another worker; on second failure, returns `503 WorkerTimeout`.                                                                                                                                                                                                            |
-| Topic mismatch / no peers found  | Backend logs `warn` after N seconds with no peers and reports `p2p.connected: false` on `/health`.                                                                                                                                                                                                       |
+| Topic mismatch / no peers found  | Backend's `p2p.watchdog.no_peers` warn fires once at 30 s with an actionable checklist (dht service health, worker `rpc.ready`, topic match, bootstrap match); `p2p.connected: false` on `/health`; `/ready` returns 503 `no_peers` until at least one worker registers.                                 |
 | Hyperbee write conflict          | Last-write-wins with monotonic ISO timestamps on every record. Documented as a single-writer simplification.                                                                                                                                                                                             |
 | Rate limit exceeded              | `429` envelope with `Retry-After`; per-key bucket.                                                                                                                                                                                                                                                       |
 | Invalid bearer                   | `401 ApiKeyInvalid` envelope; revoked keys yield `403 ApiKeyRevoked`.                                                                                                                                                                                                                                    |
@@ -180,14 +189,38 @@ These are intentional choices that differ from the original implementation plan 
 
 ## 4.1 Local Compose details
 
-`docker-compose.yml` ships with two ways to bring up the swarm:
+`docker-compose.yml` ships **self-contained by default**: a small `dht` service runs an in-Compose HyperDHT bootstrap node, and every backend / worker container sets `P2P_BOOTSTRAP=dht:49737`. This avoids Docker bridge-NAT hairpinning issues (see below) and works offline.
 
-- **Default (public DHT).** `docker compose up --build` boots 1 backend + 3 workers and lets them discover each other through the public Holepunch DHT bootstrap nodes. This is the closest to a real deployment.
-- **`p2p-local` profile (self-contained).** `docker compose --profile p2p-local up --build` adds a `dht` service that runs `hyperdht --node` on port 49737 and sets `P2P_BOOTSTRAP=dht:49737` for the backend and workers. Useful for offline demos, CI, or networks that block the public DHT.
+```bash
+docker compose up --build              # default: in-Compose DHT bootstrap
+```
+
+The `dht` service uses `HyperDHT.bootstrapper(49737, ownHost)` — the documented entrypoint for an isolated bootstrap node (see `node_modules/hyperdht/bin.js`). It pins the listen port to 49737 (failing fast if `addr.port !== 49737`), writes `/tmp/dht.ready` after `ready()`, and exposes a Compose `healthcheck: test ['CMD', 'test', '-f', '/tmp/dht.ready']`. Backend and workers `depends_on: { dht: { condition: service_healthy } }` so they never start before the bootstrap is actually accepting connections. An earlier iteration used `new HyperDHT({ port: 49737 })`; that's an ordinary DHT peer that bootstraps from mainnet and binds a random local port, so swarm peers pointing at `dht:49737` connected to nothing.
+
+**Why self-contained by default — a Docker bridge-NAT note.** When every node lives on the same Docker bridge (the typical laptop demo), each container's HyperDHT announce records the **host's** external NAT address, not the container's bridge-internal IP. Looking each other up through the public DHT therefore returns external addresses that the bridge can't reach back unless the host router supports NAT hairpinning — which most consumer setups don't. The result is a silent failure: every node announces successfully, no errors are logged, but `swarm.on('connection')` never fires because the UDP packets never arrive. Running an in-Compose `dht` service keeps announcements on bridge-internal IPs (`172.x.x.x`), which the bridge happily routes between containers.
+
+**Bash parameter expansion gotcha.** Compose substitutes `P2P_BOOTSTRAP: ${P2P_BOOTSTRAP:-dht:49737}` — the `:-` form falls back when the variable is unset OR empty. The previous form `${P2P_BOOTSTRAP-dht:49737}` only fell back when unset, so a fresh `cp .env.example .env` (which ships `P2P_BOOTSTRAP=` empty) defeated the default and pushed every peer onto the public DHT.
 
 Named volumes (`backend-data`, `worker[1-3]-data`) persist Hyperbee/Hypercore state and node-identity seeds across container restarts so worker pubkeys stay stable.
 
-## 4.2 Telemetry
+## 4.2 Operating notes
+
+A few container-runtime details that surfaced during the Compose hardening pass and are worth knowing if you fork the Dockerfiles:
+
+- **`libatomic1` is required at runtime.** Holepunch's `rocksdb-native` (a transitive dep through `udx-native` → `dht-rpc` → `hyperdht`) needs `libatomic.so.1` at `dlopen` time on Linux. The `node:22-bookworm-slim` base image doesn't ship it, so the `runtime` stage in `docker/{backend,worker}.Dockerfile` installs `libatomic1` explicitly. Without it, the prebuild's `dlopen` fails and the `require-addon` resolver surfaces a misleading `MODULE_NOT_FOUND` for one of the fallback candidate paths instead of the actual `libatomic` error.
+- **Containers run as the unprivileged `node` user.** Both Dockerfiles `mkdir -p /data && chown -R node:node /data` before declaring the `VOLUME ['/data']` so the named volume's mountpoint is owned by uid 1000. Without this, the runtime crashes with `EACCES: permission denied, mkdir '/data/state'` on the first Hyperbee write because Docker initialises a brand-new named volume as `root:root`. Note this only affects the **first** attach — if you've previously created a volume under a buggier image, you need `docker compose down -v` to drop it before the new image's ownership takes effect.
+- **In-Compose `dht` service runs from `/app/apps/backend`.** The backend image uses pnpm's isolated node-linker, so `hyperdht` lives at `/app/apps/backend/node_modules/hyperdht` (not a root-hoisted location). The Compose service overrides `working_dir` so `node -e 'require("hyperdht")'` resolves correctly.
+- **Demo HMAC secret for Compose.** Backend's config loader fail-fasts when `NODE_ENV=production && API_KEY_HMAC_SECRET` is empty or a `replace-me*` placeholder. Compose injects a clearly-labelled demo secret (`API_KEY_HMAC_SECRET: ${API_KEY_HMAC_SECRET:-cosmic-compose-demo-hmac-secret-do-not-use-in-production}`) so the stack boots from a fresh `cp .env.example .env`. A real deployment must override this via the host shell or `.env`.
+
+## 4.3 Readiness, watchdog and config fail-fast
+
+Three small additions make cold-start failures observable rather than silent:
+
+- **`GET /ready`** — separate from `/health`. Returns 200 `status: ready` only when the worker registry has at least one peer. Returns 503 `status: not_ready, reason: no_peers` during the cold-start window before the swarm forms. Opt-out from rate limiting so Kubernetes-style readiness probes always succeed. `/health` keeps its existing semantics (liveness; reports peer count but always 200).
+- **Discovery watchdog.** `bootstrapP2p()` sets a one-shot timer (default 30 s, override via `discoveryWatchdogMs`); if `registry.size() === 0` when it fires, the backend emits a single `p2p.watchdog.no_peers` warn with an actionable checklist (`dht service health, worker rpc.ready, topic match, bootstrap match`). The timer is `unref`-ed so it never blocks shutdown.
+- **Config fail-fast.** `loadConfig()` on both backend and worker rejects the literal `.env.example` placeholders (`replace-me*` prefix) up front, validates that `P2P_DISCOVERY_TOPIC` decodes to exactly 32 bytes when non-empty (with a friendly error pointing at the `crypto.randomBytes(32).toString('base64')` one-liner), and refuses an empty / dev-placeholder `API_KEY_HMAC_SECRET` under `NODE_ENV=production`. The empty `P2P_DISCOVERY_TOPIC` path is allowed and falls back to the deterministic dev topic — explicitly safe for local Compose runs and CI.
+
+## 4.4 Telemetry
 
 The backend exposes a small in-memory metrics surface:
 
@@ -195,6 +228,10 @@ The backend exposes a small in-memory metrics surface:
 - **`GET /v1/usage/me`** — authenticated. Returns the caller's usage totals plus the most recent windows (capped at 24 by default) sourced from `UsageState`. Powers the dashboard poll.
 - **In-memory `MetricsRegistry`** (`apps/backend/src/observability/metrics.ts`) tracks counters, a fixed-size ring buffer of latency samples (default 1000), and lazy worker gauges. The dispatcher records outcome / token / latency observations on every dispatch (streaming + non-streaming); the central error handler increments the rate-limit rejection counter for every 429 envelope.
 - **Counters reset on restart.** Same trade-off as the in-memory rate-limit store. Production hardening (Prometheus exposition, persistent counters, multi-replica aggregation) is captured under §6 Future Improvements.
+
+## 4.5 Compose smoke test
+
+`scripts/compose-smoke.sh` (also `pnpm compose:smoke`) brings up the stack, polls `/health` until `peers >= 3` and `/metrics workers.capacity >= 12` (default 3 × 4), mints a key, exercises both non-streaming and streaming `/v1/chat/completions`, asserts the `data: [DONE]\n\n` marker, and tears down with `docker compose down -v`. It runs in CI behind a `compose-smoke` PR label and on every push to `main` (full Compose build + 60 s swarm formation makes it too slow for every PR). This is the regression that locks in the reviewer-rescue fixes.
 
 ## 5. Scaling
 
@@ -207,9 +244,32 @@ The current design is single-region and single-backend-replica. To scale:
 
 ## 6. Future Improvements
 
-These are deliberate "should-haves" or "could-haves" that are documented but not implemented in the 2-day window:
+These are deliberate "should-haves" or "could-haves" that are documented but not implemented in the 2-day window.
+
+### 6.1 Final-pass items (test consolidation)
+
+Gaps the test suite would benefit from before a production handoff. Functional behaviour is in place; these are explicit assertions on hard-to-reach edge paths:
+
+- **Dispatcher failure-mode coverage.** End-to-end assertions on the one-retry path, second-failure → `503 workerTimeout`, and empty-registry → `503 noWorkersAvailable`. The dispatcher logic exists and the routes return the right envelopes manually; targeted unit tests would lock in the contract.
+- **Streaming cancellation E2E.** A test that drives the full chain: client `AbortController.abort()` → dispatcher closes the Protomux channel → worker generator observes the close → emits `finishReason: 'cancelled'` → backend records `cancelled` in metrics. The Compose smoke (`scripts/compose-smoke.sh` / §4.5) now exercises the streaming happy path live; the cancellation chain remains a unit-level gap.
+- **Frontend smoke tests for loading / error / empty states.** The Playwright e2e suite covers the happy path on each page. A dedicated set of smokes for `loading` (TanStack Query suspense), `error` (typed `ApiError` envelope rendering), and `empty` (no API key / no workers / no usage windows) states would back up the `frontend-standards.mdc` requirement.
+
+### 6.2 Resource cleanup audit (Step 11.5)
+
+Long-lived resources that currently rely on garbage collection or implicit close-chains. Items to either explicitly close or document with a known-gap rationale:
+
+- **`KvStore.close()` actually closes the Hypercore feed.** The Hyperbee adapter's `close()` only calls `bee.close()`; the underlying Hypercore tree + file handles are released by GC instead of an explicit `core.close()`. Move to explicit teardown so test harness restarts don't accumulate FDs.
+- **Hyperswarm connection objects after a peer disconnect.** `WorkerRegistry` soft-removes the entry from its `peers` Map, but the underlying `NoiseSecretStream` is left to GC. An explicit `conn.destroy()` would release the kernel UDP socket immediately rather than waiting on Node's idle handle close. (NB: the streaming transport now reuses `registry.getConn(pubKey)` for live channels, so the registry owns the conn lifecycle.)
+- **Protomux stream-channel listener registry on the worker side.** `attachStreamChannelServer` opens one channel per peer; on peer departure the channel object stays referenced by Protomux's internal map until the next inbound frame triggers cleanup. Explicitly tear down on the swarm `'connection'` close event.
+- **Forgotten event listeners across the close-chain.** `request.raw.on('close')`, `reply.raw.on('error')`, channel `close` callbacks. Audit each consumer and remove listeners on the inverse path (`once`-style or explicit `removeListener` in `finally`) to satisfy the lint rule + avoid the rare leak that only shows up under load. **Done for the registry's swarm listener:** `WorkerRegistry.stop()` now calls `swarm.off('connection', listener)` (covered by a unit test).
+
+Output shape: explicit teardown calls + targeted assertions in `apps/backend/src/p2p/registry.test.ts` and the worker stream-channel tests. Audit takes ~30–60 min when scheduled.
+
+### 6.3 Hardening / production candidates
 
 - **Authenticated `/v1/api-keys` management.** Gate behind an admin bearer token (rotated via a signed installer) or mTLS.
+- ~~**Discovery watchdog.**~~ **Done in §4.3** — `bootstrapP2p` warns once at 30 s if no peers are registered, with an actionable checklist.
+- ~~**Readiness probe.**~~ **Done in §4.3** — `/ready` returns 503 `no_peers` until the registry has at least one worker.
 - **Distributed rate-limit store.** Replace `@fastify/rate-limit`'s default memory store with a Hyperbee-backed sliding window keyed at `usage/<keyId>/<windowStart>`.
 - **Signed RPC results.** Worker signs the canonical `InferenceResponseFinal` bytes with its `secretKey`; backend verifies against the registry's `pubKey`. Adds non-repudiation on top of Noise's confidentiality.
 - **Multi-writer state.** Wrap state in `corestore`; let workers write their own audit feeds; backend reads via sparse replication.

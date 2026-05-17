@@ -4,6 +4,29 @@
 
 import { cleanEnv, num, str } from 'envalid';
 
+const PLACEHOLDER_PREFIX = 'replace-me';
+
+function assertNoLiteralPlaceholder(name: string, value: string): void {
+  if (value.startsWith(PLACEHOLDER_PREFIX)) {
+    throw new Error(
+      `${name} still contains the .env.example placeholder ('${value}'). ` +
+        `Set it to a real value or leave it empty to use the built-in dev default.`,
+    );
+  }
+}
+
+function assertBase64Topic(value: string): void {
+  if (value.length === 0) return;
+  const buf = Buffer.from(value, 'base64');
+  if (buf.byteLength !== 32) {
+    throw new Error(
+      `P2P_DISCOVERY_TOPIC must be a base64-encoded 32-byte buffer; got ${buf.byteLength} bytes. ` +
+        `Generate one with: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))" ` +
+        `— or leave the variable empty to use the built-in dev topic.`,
+    );
+  }
+}
+
 export interface WorkerConfig {
   NODE_ENV: 'development' | 'production' | 'test';
   WORKER_ID: string;
@@ -57,6 +80,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
     MOCK_LLM_TOKEN_RATE_HZ: num({ default: 25 }),
     MOCK_LLM_MAX_TOKENS: num({ default: 64 }),
   });
+
+  assertNoLiteralPlaceholder('P2P_DISCOVERY_TOPIC', cleaned.P2P_DISCOVERY_TOPIC);
+  assertBase64Topic(cleaned.P2P_DISCOVERY_TOPIC);
 
   return {
     NODE_ENV: cleaned.NODE_ENV,

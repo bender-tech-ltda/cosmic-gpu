@@ -43,6 +43,15 @@ interface PeerEntry {
   /** Hex form, the canonical worker id used everywhere downstream. */
   pubKeyHex: string;
   failures: number;
+  /**
+   * The live swarm connection to the worker. Kept so the streaming
+   * transport can reuse it instead of opening a parallel `dht.connect()` —
+   * the worker registers the `cosmic/inference-stream/v1` Protomux channel
+   * only on swarm connections (see `apps/worker/src/runtime/stream-channel.ts`),
+   * not on the RPC server's separate DHT listener, so a fresh dht.connect
+   * lands on a connection where the channel handler is not wired.
+   */
+  conn: HyperswarmConnection | null;
 }
 
 export class WorkerRegistry {
@@ -78,11 +87,27 @@ export class WorkerRegistry {
       this.clearIntervalFn(this.timer);
       this.timer = null;
     }
-    this.connectionListener = null;
+    if (this.connectionListener !== null) {
+      // Detach from the swarm so the registry doesn't leak listeners on
+      // restart (and the underlying EventEmitter doesn't warn about
+      // >10 listeners in long-running tests).
+      this.deps.swarm.off('connection', this.connectionListener);
+      this.connectionListener = null;
+    }
   }
 
   size(): number {
     return this.peers.size;
+  }
+
+  /**
+   * Return the live swarm connection to the worker, or `null` if the worker
+   * is not currently in the registry (never connected, or soft-removed).
+   * Used by the streaming transport to reuse the existing Hyperswarm
+   * connection for the `cosmic/inference-stream/v1` Protomux channel.
+   */
+  getConn(pubKey: Buffer): HyperswarmConnection | null {
+    return this.peers.get(pubKey.toString('hex'))?.conn ?? null;
   }
 
   /**
@@ -96,8 +121,9 @@ export class WorkerRegistry {
   private async onConnection(conn: HyperswarmConnection): Promise<void> {
     const pubKey = conn.remotePublicKey;
     const pubKeyHex = pubKey.toString('hex');
-    if (!this.peers.has(pubKeyHex)) {
-      this.peers.set(pubKeyHex, { pubKey, pubKeyHex, failures: 0 });
+    const existing = this.peers.get(pubKeyHex);
+    if (!existing) {
+      this.peers.set(pubKeyHex, { pubKey, pubKeyHex, failures: 0, conn });
       // Surface peer-discovery progress so we can confirm — from logs alone
       // — that the swarm has actually peered with N workers, independent of
       // whether `worker.health` succeeded yet.
@@ -105,6 +131,10 @@ export class WorkerRegistry {
         { peers: this.peers.size, pubKey: pubKeyHex.slice(0, 8) + '…' },
         'p2p.peer_added',
       );
+    } else if (existing.conn !== conn) {
+      // Replace stale conn (peer reconnected after a drop) so the streaming
+      // transport never grabs a destroyed stream.
+      existing.conn = conn;
     }
     await this.pollOne(pubKeyHex);
   }
@@ -126,6 +156,17 @@ export class WorkerRegistry {
           responseEncoding: workerHealthCodec,
         },
       );
+      // Defence against a worker reporting a different `workerPubKey` than
+      // the one its swarm connection was opened with. The dispatcher keys
+      // routing decisions on `conn.remotePublicKey` (this entry's pubKey),
+      // so accepting a snapshot whose `workerPubKey` mismatches would let
+      // a misconfigured or hostile worker poison `WorkersState` and
+      // misdirect future dispatches. Treat as a failed poll.
+      if (snapshot.workerPubKey !== entry.pubKeyHex) {
+        throw new Error(
+          `worker.health pubKey mismatch — connection ${entry.pubKeyHex.slice(0, 8)}… reported ${snapshot.workerPubKey.slice(0, 8)}…`,
+        );
+      }
       entry.failures = 0;
       await this.deps.workersState.upsert({
         id: snapshot.workerId,

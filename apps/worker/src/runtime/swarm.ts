@@ -11,6 +11,7 @@ import type { Logger } from 'pino';
 import { DEFAULT_DISCOVERY_TOPIC, decodeDiscoveryTopic } from '@cosmic/shared';
 
 import type { WorkerConfig } from '../config/env.config.js';
+import { parseBootstrap } from './bootstrap.js';
 import type { WorkerIdentity } from './identity.js';
 
 export interface SwarmHandle {
@@ -18,23 +19,6 @@ export interface SwarmHandle {
   discovery: HyperswarmDiscovery;
   topic: Uint8Array;
   close: () => Promise<void>;
-}
-
-function parseBootstrap(value: string): Array<{ host: string; port: number }> | undefined {
-  const trimmed = value.trim();
-  if (trimmed.length === 0) return undefined;
-  return trimmed
-    .split(',')
-    .map((entry) => entry.trim())
-    .filter(Boolean)
-    .map((entry) => {
-      const [host, portRaw] = entry.split(':');
-      const port = Number.parseInt(portRaw ?? '', 10);
-      if (!host || !Number.isFinite(port) || port <= 0) {
-        throw new Error(`P2P_BOOTSTRAP entry is not host:port — got "${entry}"`);
-      }
-      return { host, port };
-    });
 }
 
 function resolveTopic(config: WorkerConfig, log: Logger): Uint8Array {
@@ -84,7 +68,22 @@ export async function joinSwarm(
     }
   });
 
-  const discovery = swarm.join(topic, { client: true, server: true });
+  // Worker uses swarm as a *client* only — the canonical listener for this
+  // pubkey lives on the RPC server's own DHT (`runtime/rpc-server.ts`), which
+  // is registered via `rpc.createServer().listen(keyPair)`. If we ALSO did
+  // `swarm.join(topic, { server: true })` here, the same pubkey would be
+  // advertised twice on the shared bootstrap (once by swarm.dht, once by
+  // rpc.dht). Backend `dht.connect(workerPubKey)` lookups would round-robin
+  // between the two listeners; whichever resolves first wins. The swarm
+  // listener accepts a raw NoiseSecretStream that has no Protomux RPC
+  // handlers — RPC framing then fails with `CHANNEL_CLOSED` /
+  // `CHANNEL_DESTROYED`, producing the soft-removal loop reviewers saw.
+  //
+  // With client-only here, the swarm still discovers the backend (which IS a
+  // server) so the backend's `swarm.on('connection')` fires on first contact;
+  // the backend then learns this worker's pubkey from `conn.remotePublicKey`
+  // and points its RPC client at the single canonical listener.
+  const discovery = swarm.join(topic, { client: true, server: false });
   await discovery.flushed();
 
   return {

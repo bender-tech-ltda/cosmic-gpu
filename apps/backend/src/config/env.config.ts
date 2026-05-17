@@ -4,6 +4,44 @@
 
 import { cleanEnv, host, num, port, str } from 'envalid';
 
+const PLACEHOLDER_PREFIX = 'replace-me';
+const DEV_HMAC_PLACEHOLDER = 'dev-only-replace-me';
+
+function assertNoLiteralPlaceholder(name: string, value: string): void {
+  if (value.startsWith(PLACEHOLDER_PREFIX)) {
+    throw new Error(
+      `${name} still contains the .env.example placeholder ('${value}'). ` +
+        `Set it to a real value or leave it empty to use the built-in dev default.`,
+    );
+  }
+}
+
+function assertBase64Topic(value: string): void {
+  if (value.length === 0) return;
+  const buf = Buffer.from(value, 'base64');
+  if (buf.byteLength !== 32) {
+    throw new Error(
+      `P2P_DISCOVERY_TOPIC must be a base64-encoded 32-byte buffer; got ${buf.byteLength} bytes. ` +
+        `Generate one with: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))" ` +
+        `— or leave the variable empty to use the built-in dev topic.`,
+    );
+  }
+}
+
+function assertProductionHmacSecret(value: string, nodeEnv: string): void {
+  if (nodeEnv !== 'production') return;
+  if (
+    value.length === 0 ||
+    value === DEV_HMAC_PLACEHOLDER ||
+    value.startsWith(PLACEHOLDER_PREFIX)
+  ) {
+    throw new Error(
+      `API_KEY_HMAC_SECRET must be set to a strong random value when NODE_ENV=production. ` +
+        `Generate one with: openssl rand -hex 32`,
+    );
+  }
+}
+
 export interface BackendConfig {
   NODE_ENV: 'development' | 'production' | 'test';
   BACKEND_HOST: string;
@@ -67,6 +105,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): BackendConfig 
       default: defaultStateBackend,
     }),
   });
+
+  assertNoLiteralPlaceholder('P2P_DISCOVERY_TOPIC', cleaned.P2P_DISCOVERY_TOPIC);
+  assertBase64Topic(cleaned.P2P_DISCOVERY_TOPIC);
+  assertProductionHmacSecret(cleaned.API_KEY_HMAC_SECRET, cleaned.NODE_ENV);
 
   return {
     NODE_ENV: cleaned.NODE_ENV,
