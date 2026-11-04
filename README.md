@@ -311,7 +311,3 @@ See [`.env.example`](./.env.example) for the full list.
 - **[AI Rules](./.cursor/rules)** — coding/architecture/testing rules used by the AI assistant.
 
 ---
-
-## License
-
-This is a take-home assignment — not licensed for production use.
